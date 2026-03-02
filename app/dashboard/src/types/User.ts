@@ -68,6 +68,23 @@ export type UserCreate = Pick<
   | "device_limit"
 >;
 
+export type UserDevice = {
+  id: number;
+  hwid: string;
+  platform: string | null;
+  os_version: string | null;
+  device_model: string | null;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+  disabled: boolean;
+};
+
+export type UserDevicesResponse = {
+  devices: UserDevice[];
+  total: number;
+};
+
 export type UserApi = {
   discord_webook: string;
   is_sudo: boolean;

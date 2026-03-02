@@ -1507,8 +1507,11 @@ def count_online_users(db: Session, hours: int = 24):
     return query.scalar()
 
 
-def get_user_devices(db: Session, dbuser: User) -> List[UserDevice]:
-    return db.query(UserDevice).filter(UserDevice.user_id == dbuser.id).all()
+def get_user_devices(db: Session, dbuser: User, include_disabled: bool = False) -> List[UserDevice]:
+    query = db.query(UserDevice).filter(UserDevice.user_id == dbuser.id)
+    if not include_disabled:
+        query = query.filter(UserDevice.disabled == False)
+    return query.all()
 
 
 def get_user_device_count(db: Session, user_id: int) -> int:
@@ -1567,13 +1570,18 @@ def delete_user_device(db: Session, device_id: int, user_id: int) -> bool:
     ).first()
     if not device:
         return False
-    db.delete(device)
+    # Mark as disabled instead of deleting to prevent reconnection
+    device.disabled = True
+    device.updated_at = datetime.utcnow()
     db.commit()
     return True
 
 
 def delete_all_user_devices(db: Session, user_id: int) -> int:
-    count = db.query(UserDevice).filter(UserDevice.user_id == user_id).delete()
+    count = db.query(UserDevice).filter(
+        UserDevice.user_id == user_id,
+        UserDevice.disabled == False
+    ).update({"disabled": True, "updated_at": datetime.utcnow()})
     db.commit()
     return count
 
@@ -1584,10 +1592,22 @@ def check_hwid_limit(db: Session, dbuser: User, hwid: Optional[str]) -> Tuple[bo
         return (True, None)
     if not hwid:
         return (False, "no_hwid")
+    
+    # Check if this HWID exists and is disabled
     existing = get_user_device_by_hwid(db, dbuser.id, hwid)
+    if existing and existing.disabled:
+        return (False, "device_disabled")
+    
+    # If HWID already exists and is active, allow it
     if existing:
         return (True, None)
-    count = get_user_device_count(db, dbuser.id)
+    
+    # Count only active (non-disabled) devices
+    count = db.query(func.count(UserDevice.id)).filter(
+        UserDevice.user_id == dbuser.id,
+        UserDevice.disabled == False
+    ).scalar()
+    
     if count >= effective_limit:
         return (False, "limit_reached")
     return (True, None)

@@ -375,3 +375,4 @@ class UserDevice(Base):
     user_agent = Column(String(512), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    disabled = Column(Boolean, nullable=False, default=False)

@@ -406,8 +406,8 @@ def get_user_devices(
     db: Session = Depends(get_db),
     dbuser: UserResponse = Depends(get_validated_user),
 ):
-    """Get all devices registered to a user"""
-    devices = crud.get_user_devices(db, dbuser)
+    """Get all devices registered to a user (including disabled ones)"""
+    devices = crud.get_user_devices(db, dbuser, include_disabled=True)
     return {"devices": devices, "total": len(devices)}
 
 

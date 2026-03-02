@@ -50,11 +50,14 @@ import {
   ProxyType,
   User,
   UserCreate,
+  UserDevice,
   UserInbounds,
+  UserDevicesResponse,
 } from "types/User";
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { z } from "zod";
 import { DeleteIcon } from "./DeleteUserModal";
+import { DeviceManagement } from "./DeviceManagement";
 import { Icon } from "./Icon";
 import { Input } from "./Input";
 import { RadioGroup } from "./RadioGroup";
@@ -234,11 +237,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
     onEditingUser,
     createUser,
     onDeletingUser,
+    fetchUserDevices,
+    deleteUserDevice,
+    deleteAllUserDevices,
   } = useDashboard();
   const isEditing = !!editingUser;
   const isOpen = isCreatingNewUser || isEditing;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>("");
+  const [devices, setDevices] = useState<UserDevice[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
   const toast = useToast();
   const { t, i18n } = useTranslation();
 
@@ -292,8 +300,70 @@ export const UserDialog: FC<UserDialogProps> = () => {
       fetchUsageWithFilter({
         start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
       });
+
+      // Fetch devices
+      setDevicesLoading(true);
+      fetchUserDevices(editingUser)
+        .then((data: UserDevicesResponse) => {
+          setDevices(data.devices);
+        })
+        .finally(() => {
+          setDevicesLoading(false);
+        });
     }
   }, [editingUser]);
+
+  const handleDeleteDevice = (deviceId: number) => {
+    if (!editingUser) return;
+    
+    deleteUserDevice(editingUser, deviceId)
+      .then(() => {
+        // Mark as disabled in the list
+        setDevices((prev) => prev.map((d) => 
+          d.id === deviceId ? { ...d, disabled: true } : d
+        ));
+        toast({
+          title: t("userDialog.deviceBlocked"),
+          status: "success",
+          isClosable: true,
+          position: "top",
+          duration: 2000,
+        });
+      })
+      .catch(() => {
+        toast({
+          title: t("userDialog.deviceDeleteFailed"),
+          status: "error",
+          isClosable: true,
+          position: "top",
+          duration: 3000,
+        });
+      });
+  };
+
+  const handleDeleteAllDevices = () => {
+    if (!editingUser) return;
+    deleteAllUserDevices(editingUser)
+      .then(() => {
+        setDevices([]);
+        toast({
+          title: t("userDialog.allDevicesDeleted"),
+          status: "success",
+          isClosable: true,
+          position: "top",
+          duration: 2000,
+        });
+      })
+      .catch(() => {
+        toast({
+          title: t("userDialog.allDevicesDeleteFailed"),
+          status: "error",
+          isClosable: true,
+          position: "top",
+          duration: 3000,
+        });
+      });
+  };
 
   const submit = (values: FormType) => {
     setLoading(true);
@@ -797,6 +867,17 @@ export const UserDialog: FC<UserDialogProps> = () => {
                     </FormErrorMessage>
                   </FormControl>
                 </GridItem>
+                {isEditing && (
+                  <GridItem pt={6} colSpan={{ base: 1, md: 2 }}>
+                    <DeviceManagement
+                      user={editingUser}
+                      devices={devices}
+                      isLoading={devicesLoading}
+                      onDeleteDevice={handleDeleteDevice}
+                      onDeleteAllDevices={handleDeleteAllDevices}
+                    />
+                  </GridItem>
+                )}
                 {isEditing && usageVisible && (
                   <GridItem pt={6} colSpan={{ base: 1, md: 2 }}>
                     <VStack gap={4}>
