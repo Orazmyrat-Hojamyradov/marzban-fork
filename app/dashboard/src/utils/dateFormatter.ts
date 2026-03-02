@@ -18,6 +18,7 @@ export const relativeExpiryDate = (expiryDate: number | null | undefined) => {
         .utc()
         .diff(dayjs())
     );
+    
     if (duration.years() != 0) {
       durationSlots.push(
         Math.abs(duration.years()) +

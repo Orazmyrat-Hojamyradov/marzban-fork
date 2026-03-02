@@ -135,13 +135,13 @@ export const DeviceManagement: FC<DeviceManagementProps> = ({
                 opacity={device.disabled ? 0.6 : 1}
               >
                 <Flex justifyContent="space-between" alignItems="flex-start" mb={2}>
-                  <HStack spacing={2}>
-                    <Text fontSize="2xl">{getDeviceIcon(device)}</Text>
-                    <Box>
-                      <Text fontWeight="medium" fontSize="sm" noOfLines={1}>
+                  <HStack spacing={2} align="flex-start">
+                    <Text fontSize="2xl" flexShrink={0}>{getDeviceIcon(device)}</Text>
+                    <Box minW={0} flex={1}>
+                      <Text fontWeight="medium" fontSize="sm" wordBreak="break-word">
                         {getDeviceName(device)}
                       </Text>
-                      <HStack spacing={1} mt={1}>
+                      <HStack spacing={1} mt={1} flexWrap="wrap">
                         {device.platform && (
                           <Badge fontSize="8px" px={1} py={0.5} borderRadius="md" colorScheme={device.disabled ? "gray" : "blue"}>
                             {device.platform}
@@ -261,9 +261,9 @@ export const DeviceManagement: FC<DeviceManagementProps> = ({
                     _hover={{ bg: device.disabled ? "gray.100" : "gray.50", _dark: { bg: device.disabled ? "gray.750" : "gray.700" } }}
                   >
                     <Box as="td" py={3} px={4}>
-                      <HStack spacing={2}>
-                        <Text fontSize="xl">{getDeviceIcon(device)}</Text>
-                        <Text fontWeight="medium" noOfLines={1}>
+                      <HStack spacing={2} align="flex-start">
+                        <Text fontSize="xl" flexShrink={0}>{getDeviceIcon(device)}</Text>
+                        <Text fontWeight="medium" wordBreak="break-word" whiteSpace="normal">
                           {getDeviceName(device)}
                         </Text>
                       </HStack>

@@ -50,27 +50,45 @@ def get_subscription_user_info(user: UserResponse) -> dict:
     }
 
 
-def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> Optional[Response]:
+def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> tuple[Optional[Response], bool]:
+    """
+    Enforce HWID-based device limiting.
+    
+    Returns:
+        tuple: (response, is_blocked)
+            - response: Response object if request should be blocked/limited, None otherwise
+            - is_blocked: True if device is disabled/blocked (should return empty inbounds)
+    """
     if not HWID_ENABLED:
-        return None
+        return (None, False)
+    
     hwid = request.headers.get("x-hwid", "").strip() or None
     platform = request.headers.get("x-device-os", "").strip() or None
     os_version = request.headers.get("x-ver-os", "").strip() or None
     device_model = request.headers.get("x-device-model", "").strip() or None
-    
+
     # Refresh dbuser to ensure we have the latest device_limit
     db.refresh(dbuser)
-    
+
     allowed, reason = crud.check_hwid_limit(db, dbuser, hwid)
     if not allowed:
         logger.warning(f"HWID limit check failed for user {dbuser.username}: hwid={hwid}, reason={reason}, device_limit={dbuser.device_limit}")
-        return Response(content="", media_type="text/plain", headers={"x-hwid-limit": "true"})
+        return (Response(content="", media_type="text/plain", headers={"x-hwid-limit": "true"}), False)
+    
+    # Check if this HWID is disabled/blocked
     if hwid:
         existing = crud.get_user_device_by_hwid(db, dbuser.id, hwid)
         if existing:
+            if existing.disabled:
+                # Device is blocked - return is_blocked=True to generate empty inbounds
+                logger.info(f"Blocked device {hwid} updating subscription for user {dbuser.username} - returning empty inbounds")
+                return (None, True)
+            
+            # Update existing device info
             crud.update_user_device(db, existing, platform=platform, os_version=os_version,
                                     device_model=device_model, user_agent=user_agent or None)
         else:
+            # New device - register it
             try:
                 crud.register_user_device(db, dbuser.id, hwid, platform=platform, os_version=os_version,
                                           device_model=device_model, user_agent=user_agent or None)
@@ -78,7 +96,8 @@ def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> Opt
             except IntegrityError:
                 db.rollback()
                 logger.warning(f"Device registration race condition for user {dbuser.username}: hwid={hwid}")
-    return None
+    
+    return (None, False)
 
 
 @router.get("/{token}/")
@@ -101,7 +120,7 @@ def user_subscription(
             )
         )
 
-    hwid_response = _enforce_hwid(request, db, dbuser, user_agent)
+    hwid_response, is_blocked = _enforce_hwid(request, db, dbuser, user_agent)
     if hwid_response is not None:
         return hwid_response
 
@@ -117,6 +136,11 @@ def user_subscription(
             for key, val in get_subscription_user_info(user).items()
         )
     }
+
+    # If device is blocked, return empty subscription (no inbounds)
+    if is_blocked:
+        logger.info(f"Returning empty subscription for blocked device of user {user.username}")
+        return Response(content="", media_type="text/plain", headers=response_headers)
 
     if re.match(r'^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)', user_agent):
         conf = generate_subscription(user=user, config_format="clash-meta", as_base64=False, reverse=False)
@@ -219,7 +243,7 @@ def user_subscription_with_client_type(
     """Provides a subscription link based on the specified client type (e.g., Clash, V2Ray)."""
     user: UserResponse = UserResponse.model_validate(dbuser)
 
-    hwid_response = _enforce_hwid(request, db, dbuser, user_agent)
+    hwid_response, is_blocked = _enforce_hwid(request, db, dbuser, user_agent)
     if hwid_response is not None:
         return hwid_response
 
@@ -234,6 +258,11 @@ def user_subscription_with_client_type(
             for key, val in get_subscription_user_info(user).items()
         )
     }
+
+    # If device is blocked, return empty subscription (no inbounds)
+    if is_blocked:
+        logger.info(f"Returning empty subscription for blocked device of user {user.username} (client_type={client_type})")
+        return Response(content="", media_type="text/plain", headers=response_headers)
 
     config = client_config.get(client_type)
     conf = generate_subscription(user=user,
