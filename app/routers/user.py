@@ -10,6 +10,7 @@ from app.dependencies import get_expired_users_list, get_validated_user, validat
 from app.models.admin import Admin
 from app.models.user import (
     UserCreate,
+    UserDevicesResponse,
     UserModify,
     UserResponse,
     UsersResponse,
@@ -398,3 +399,36 @@ def delete_expired_users(
         )
 
     return removed_users
+
+
+@router.get("/user/{username}/devices", response_model=UserDevicesResponse, responses={403: responses._403, 404: responses._404})
+def get_user_devices(
+    db: Session = Depends(get_db),
+    dbuser: UserResponse = Depends(get_validated_user),
+):
+    """Get all devices registered to a user"""
+    devices = crud.get_user_devices(db, dbuser)
+    return {"devices": devices, "total": len(devices)}
+
+
+@router.delete("/user/{username}/devices/{device_id}", responses={403: responses._403, 404: responses._404})
+def delete_user_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    dbuser: UserResponse = Depends(get_validated_user),
+):
+    """Delete a specific device from a user"""
+    deleted = crud.delete_user_device(db, device_id, dbuser.id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Device not found")
+    return {"detail": "Device successfully deleted"}
+
+
+@router.delete("/user/{username}/devices", responses={403: responses._403, 404: responses._404})
+def delete_all_user_devices(
+    db: Session = Depends(get_db),
+    dbuser: UserResponse = Depends(get_validated_user),
+):
+    """Delete all devices registered to a user"""
+    count = crud.delete_all_user_devices(db, dbuser.id)
+    return {"detail": f"{count} device(s) successfully deleted"}

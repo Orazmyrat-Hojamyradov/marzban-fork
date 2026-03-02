@@ -31,9 +31,12 @@ from .crud import (create_admin, create_notification_reminder,  # noqa
                    get_users_count, remove_admin, remove_user, revoke_user_sub,
                    set_owner, update_admin, update_user, update_user_status, reset_user_by_next,
                    update_user_sub, start_user_expire, get_admin_by_id,
-                   get_admin_by_telegram_id)
+                   get_admin_by_telegram_id,
+                   get_user_devices, get_user_device_count, get_user_device_by_hwid,
+                   register_user_device, update_user_device, delete_user_device,
+                   delete_all_user_devices, check_hwid_limit)
 
-from .models import JWT, System, User  # noqa
+from .models import JWT, System, User, UserDevice  # noqa
 
 __all__ = [
     "get_or_create_inbound",
@@ -68,7 +71,17 @@ __all__ = [
     "GetDB",
     "get_db",
 
+    "get_user_devices",
+    "get_user_device_count",
+    "get_user_device_by_hwid",
+    "register_user_device",
+    "update_user_device",
+    "delete_user_device",
+    "delete_all_user_devices",
+    "check_hwid_limit",
+
     "User",
+    "UserDevice",
     "System",
     "JWT",
 

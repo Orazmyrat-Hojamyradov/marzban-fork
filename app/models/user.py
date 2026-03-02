@@ -75,6 +75,8 @@ class User(BaseModel):
 
     auto_delete_in_days: Optional[int] = Field(None, nullable=True)
 
+    device_limit: Optional[int] = Field(None, nullable=True)
+
     next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
 
     @field_validator('data_limit', mode='before')
@@ -289,6 +291,7 @@ class UserResponse(User):
     subscription_url: str = ""
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
+    device_count: int = 0
 
     admin: Optional[Admin] = None
     model_config = ConfigDict(from_attributes=True)
@@ -364,3 +367,20 @@ class UserUsagesResponse(BaseModel):
 
 class UsersUsagesResponse(BaseModel):
     usages: List[UserUsageResponse]
+
+
+class UserDeviceResponse(BaseModel):
+    id: int
+    hwid: str
+    platform: Optional[str] = None
+    os_version: Optional[str] = None
+    device_model: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class UserDevicesResponse(BaseModel):
+    devices: List[UserDeviceResponse]
+    total: int

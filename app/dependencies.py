@@ -79,6 +79,9 @@ def get_validated_sub(
     if dbuser.sub_revoked_at and dbuser.sub_revoked_at > sub['created_at']:
         raise HTTPException(status_code=404, detail="Not Found")
 
+    # Refresh user data to ensure device_limit and other fields are up-to-date
+    db.refresh(dbuser)
+
     return dbuser
 
 

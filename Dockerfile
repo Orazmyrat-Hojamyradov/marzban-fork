@@ -20,11 +20,11 @@ FROM python:$PYTHON_VERSION-slim
 ENV PYTHON_LIB_PATH=/usr/local/lib/python${PYTHON_VERSION%.*}/site-packages
 WORKDIR /code
 
-RUN rm -rf $PYTHON_LIB_PATH/*
-
-COPY --from=build $PYTHON_LIB_PATH $PYTHON_LIB_PATH
+COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=build /usr/local/bin /usr/local/bin
 COPY --from=build /usr/local/share/xray /usr/local/share/xray
+
+RUN pip install --no-cache-dir "setuptools<78"
 
 COPY . /code
 

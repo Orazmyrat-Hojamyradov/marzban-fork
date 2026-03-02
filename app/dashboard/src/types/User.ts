@@ -50,6 +50,8 @@ export type User = {
   inbounds: UserInbounds;
   note: string;
   online_at: string;
+  device_limit: number | null;
+  device_count: number;
 };
 
 export type UserCreate = Pick<
@@ -63,6 +65,7 @@ export type UserCreate = Pick<
   | "username"
   | "status"
   | "note"
+  | "device_limit"
 >;
 
 export type UserApi = {

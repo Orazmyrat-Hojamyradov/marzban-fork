@@ -1,15 +1,19 @@
 import re
 from distutils.version import LooseVersion
+from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, Path, Request, Response
 from fastapi.responses import HTMLResponse
+from sqlalchemy.exc import IntegrityError
 
+from app import logger
 from app.db import Session, crud, get_db
 from app.dependencies import get_validated_sub, validate_dates
 from app.models.user import SubscriptionUserResponse, UserResponse
 from app.subscription.share import encode_title, generate_subscription
 from app.templates import render_template
 from config import (
+    HWID_ENABLED,
     SUB_PROFILE_TITLE,
     SUB_SUPPORT_URL,
     SUB_UPDATE_INTERVAL,
@@ -46,6 +50,37 @@ def get_subscription_user_info(user: UserResponse) -> dict:
     }
 
 
+def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> Optional[Response]:
+    if not HWID_ENABLED:
+        return None
+    hwid = request.headers.get("x-hwid", "").strip() or None
+    platform = request.headers.get("x-device-os", "").strip() or None
+    os_version = request.headers.get("x-ver-os", "").strip() or None
+    device_model = request.headers.get("x-device-model", "").strip() or None
+    
+    # Refresh dbuser to ensure we have the latest device_limit
+    db.refresh(dbuser)
+    
+    allowed, reason = crud.check_hwid_limit(db, dbuser, hwid)
+    if not allowed:
+        logger.warning(f"HWID limit check failed for user {dbuser.username}: hwid={hwid}, reason={reason}, device_limit={dbuser.device_limit}")
+        return Response(content="", media_type="text/plain", headers={"x-hwid-limit": "true"})
+    if hwid:
+        existing = crud.get_user_device_by_hwid(db, dbuser.id, hwid)
+        if existing:
+            crud.update_user_device(db, existing, platform=platform, os_version=os_version,
+                                    device_model=device_model, user_agent=user_agent or None)
+        else:
+            try:
+                crud.register_user_device(db, dbuser.id, hwid, platform=platform, os_version=os_version,
+                                          device_model=device_model, user_agent=user_agent or None)
+                logger.info(f"New device registered for user {dbuser.username}: hwid={hwid}")
+            except IntegrityError:
+                db.rollback()
+                logger.warning(f"Device registration race condition for user {dbuser.username}: hwid={hwid}")
+    return None
+
+
 @router.get("/{token}/")
 @router.get("/{token}", include_in_schema=False)
 def user_subscription(
@@ -65,6 +100,10 @@ def user_subscription(
                 {"user": user}
             )
         )
+
+    hwid_response = _enforce_hwid(request, db, dbuser, user_agent)
+    if hwid_response is not None:
+        return hwid_response
 
     crud.update_user_sub(db, dbuser, user_agent)
     response_headers = {
@@ -179,6 +218,10 @@ def user_subscription_with_client_type(
 ):
     """Provides a subscription link based on the specified client type (e.g., Clash, V2Ray)."""
     user: UserResponse = UserResponse.model_validate(dbuser)
+
+    hwid_response = _enforce_hwid(request, db, dbuser, user_agent)
+    if hwid_response is not None:
+        return hwid_response
 
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',

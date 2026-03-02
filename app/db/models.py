@@ -92,6 +92,9 @@ class User(Base):
     # * NULL: Uses global settings.
     auto_delete_in_days = Column(Integer, nullable=True, default=None)
 
+    device_limit = Column(Integer, nullable=True, default=None)
+    devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
+
     edit_at = Column(DateTime, nullable=True, default=None)
     last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)
 
@@ -124,6 +127,10 @@ class User(Base):
     @property
     def last_traffic_reset_time(self):
         return self.usage_logs[-1].reset_at if self.usage_logs else self.created_at
+
+    @property
+    def device_count(self) -> int:
+        return len(self.devices) if self.devices else 0
 
     @property
     def excluded_inbounds(self):
@@ -350,3 +357,21 @@ class NotificationReminder(Base):
     threshold = Column(Integer, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserDevice(Base):
+    __tablename__ = "user_devices"
+    __table_args__ = (
+        UniqueConstraint('hwid', 'user_id'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    hwid = Column(String(256), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user = relationship("User", back_populates="devices")
+    platform = Column(String(64), nullable=True)
+    os_version = Column(String(64), nullable=True)
+    device_model = Column(String(128), nullable=True)
+    user_agent = Column(String(512), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

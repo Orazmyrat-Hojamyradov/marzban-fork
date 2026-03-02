@@ -26,6 +26,7 @@ from app.db.models import (
     ProxyTypes,
     System,
     User,
+    UserDevice,
     UserTemplate,
     UserUsageResetLogs,
 )
@@ -43,7 +44,7 @@ from app.models.user import (
 )
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
-from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
+from config import HWID_FALLBACK_LIMIT, NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
 
 
 def add_default_host(db: Session, inbound: ProxyInbound):
@@ -390,6 +391,7 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
         on_hold_expire_duration=(user.on_hold_expire_duration or None),
         on_hold_timeout=(user.on_hold_timeout or None),
         auto_delete_in_days=user.auto_delete_in_days,
+        device_limit=user.device_limit,
         next_plan=NextPlan(
             data_limit=user.next_plan.data_limit,
             expire=user.next_plan.expire,
@@ -514,6 +516,9 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
 
     if modify.on_hold_expire_duration is not None:
         dbuser.on_hold_expire_duration = modify.on_hold_expire_duration
+
+    if modify.device_limit is not None:
+        dbuser.device_limit = modify.device_limit
 
     if modify.next_plan is not None:
         dbuser.next_plan = NextPlan(
@@ -1500,3 +1505,89 @@ def count_online_users(db: Session, hours: int = 24):
     query = db.query(func.count(User.id)).filter(User.online_at.isnot(
         None), User.online_at >= twenty_four_hours_ago)
     return query.scalar()
+
+
+def get_user_devices(db: Session, dbuser: User) -> List[UserDevice]:
+    return db.query(UserDevice).filter(UserDevice.user_id == dbuser.id).all()
+
+
+def get_user_device_count(db: Session, user_id: int) -> int:
+    return db.query(func.count(UserDevice.id)).filter(UserDevice.user_id == user_id).scalar()
+
+
+def get_user_device_by_hwid(db: Session, user_id: int, hwid: str) -> Optional[UserDevice]:
+    return db.query(UserDevice).filter(
+        UserDevice.user_id == user_id,
+        UserDevice.hwid == hwid
+    ).first()
+
+
+def register_user_device(
+    db: Session, user_id: int, hwid: str,
+    platform: Optional[str] = None, os_version: Optional[str] = None,
+    device_model: Optional[str] = None, user_agent: Optional[str] = None
+) -> UserDevice:
+    device = UserDevice(
+        user_id=user_id,
+        hwid=hwid,
+        platform=platform,
+        os_version=os_version,
+        device_model=device_model,
+        user_agent=user_agent,
+    )
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+def update_user_device(
+    db: Session, device: UserDevice,
+    platform: Optional[str] = None, os_version: Optional[str] = None,
+    device_model: Optional[str] = None, user_agent: Optional[str] = None
+) -> UserDevice:
+    if platform is not None:
+        device.platform = platform
+    if os_version is not None:
+        device.os_version = os_version
+    if device_model is not None:
+        device.device_model = device_model
+    if user_agent is not None:
+        device.user_agent = user_agent
+    device.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+def delete_user_device(db: Session, device_id: int, user_id: int) -> bool:
+    device = db.query(UserDevice).filter(
+        UserDevice.id == device_id,
+        UserDevice.user_id == user_id
+    ).first()
+    if not device:
+        return False
+    db.delete(device)
+    db.commit()
+    return True
+
+
+def delete_all_user_devices(db: Session, user_id: int) -> int:
+    count = db.query(UserDevice).filter(UserDevice.user_id == user_id).delete()
+    db.commit()
+    return count
+
+
+def check_hwid_limit(db: Session, dbuser: User, hwid: Optional[str]) -> Tuple[bool, Optional[str]]:
+    effective_limit = dbuser.device_limit if dbuser.device_limit is not None else HWID_FALLBACK_LIMIT
+    if effective_limit == 0:
+        return (True, None)
+    if not hwid:
+        return (False, "no_hwid")
+    existing = get_user_device_by_hwid(db, dbuser.id, hwid)
+    if existing:
+        return (True, None)
+    count = get_user_device_count(db, dbuser.id)
+    if count >= effective_limit:
+        return (False, "limit_reached")
+    return (True, None)

@@ -143,6 +143,8 @@
   "userDialog.absolute": "Абсолютно",
   "userDialog.custom": "Пользовательский",
   "userDialog.dataLimit": "Лимит трафика",
+  "userDialog.deviceLimit": "Лимит устройств",
+  "userDialog.deviceLimitHelp": "Максимальное количество устройств (0 = безлимитно, пусто = использовать глобальное значение по умолчанию)",
   "userDialog.days": "Дни",
   "userDialog.editUser": "Редактировать",
   "userDialog.editUserTitle": "Редактировать пользователя",

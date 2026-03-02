@@ -37,6 +37,7 @@
   "hostsDialog.addHost": "添加主机",
   "hostsDialog.advancedOptions": "高级选项",
   "hostsDialog.allowinsecure": "允许不安全连接",
+  "hostsDialog.useSniAsHost": "Use sni as host",
   "hostsDialog.alpn": "ALPN",
   "hostsDialog.apply": "保存",
   "hostsDialog.currentServer": "当前服务器的 IP 地址",
@@ -142,6 +143,8 @@
   "userDialog.absolute": "选择范围",
   "userDialog.custom": "自定义",
   "userDialog.dataLimit": "流量限制",
+  "userDialog.deviceLimit": "设备限制",
+  "userDialog.deviceLimitHelp": "最大设备数量（0 = 无限制，空 = 使用全局默认值）",
   "userDialog.days": "天",
   "userDialog.editUser": "修改",
   "userDialog.editUserTitle": "用户编辑",
@@ -188,5 +191,5 @@
   "usersTable.noUserMatched": "没有找到您搜索的用户",
   "usersTable.status": "状态",
   "usersTable.sortByExpire": "按过期时间排序",
-  "usersTable.total": "总共",
+  "usersTable.total": "总共"
 }

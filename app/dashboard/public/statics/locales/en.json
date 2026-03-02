@@ -143,6 +143,8 @@
   "userDialog.absolute": "Absolute",
   "userDialog.custom": "Custom",
   "userDialog.dataLimit": "Data Limit",
+  "userDialog.deviceLimit": "Device Limit",
+  "userDialog.deviceLimitHelp": "Maximum number of devices (0 = unlimited, empty = use global default)",
   "userDialog.days": "Days",
   "userDialog.editUser": "Edit user",
   "userDialog.editUserTitle": "Edit user",

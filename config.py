@@ -143,6 +143,10 @@ SUB_PROFILE_TITLE = config("SUB_PROFILE_TITLE", default="Subscription")
 # discord webhook log
 DISCORD_WEBHOOK_URL = config("DISCORD_WEBHOOK_URL", default="")
 
+# HWID device limiting
+HWID_ENABLED = config("HWID_ENABLED", default=False, cast=bool)
+HWID_FALLBACK_LIMIT = config("HWID_FALLBACK_LIMIT", default=0, cast=int)
+
 
 # Interval jobs, all values are in seconds
 JOB_CORE_HEALTH_CHECK_INTERVAL = config("JOB_CORE_HEALTH_CHECK_INTERVAL", cast=int, default=10)

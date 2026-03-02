@@ -95,6 +95,7 @@ const formatUser = (user: User): FormType => {
     data_limit: user.data_limit
       ? Number((user.data_limit / 1073741824).toFixed(5))
       : user.data_limit,
+    device_limit: user.device_limit || null,
     on_hold_expire_duration: user.on_hold_expire_duration
       ? Number(user.on_hold_expire_duration / (24 * 60 * 60))
       : user.on_hold_expire_duration,
@@ -110,6 +111,7 @@ const getDefaultValues = (): FormType => {
   return {
     selected_proxies: Object.keys(defaultInbounds) as ProxyKeys,
     data_limit: null,
+    device_limit: null,
     expire: null,
     username: "",
     data_limit_reset_strategy: "no_reset",
@@ -172,6 +174,15 @@ const baseSchema = {
     .transform((str) => {
       if (str) return Number((parseFloat(String(str)) * 1073741824).toFixed(5));
       return 0;
+    }),
+  device_limit: z
+    .string()
+    .min(0)
+    .or(z.number())
+    .nullable()
+    .transform((str) => {
+      if (str === "" || str === null) return null;
+      return Number(str);
     }),
   expire: z.number().nullable(),
   data_limit_reset_strategy: z.string(),
@@ -582,6 +593,32 @@ export const UserDialog: FC<UserDialogProps> = () => {
                           />
                         </FormControl>
                       </Collapse>
+
+                      <FormControl mb={"10px"}>
+                        <FormLabel>{t("userDialog.deviceLimit")}</FormLabel>
+                        <Controller
+                          control={form.control}
+                          name="device_limit"
+                          render={({ field }) => {
+                            return (
+                              <Input
+                                type="number"
+                                size="sm"
+                                borderRadius="6px"
+                                onChange={field.onChange}
+                                disabled={disabled}
+                                error={
+                                  form.formState.errors.device_limit?.message
+                                }
+                                value={field.value !== null && field.value !== undefined ? String(field.value) : ""}
+                              />
+                            );
+                          }}
+                        />
+                        <FormHelperText fontSize="xs">
+                          {t("userDialog.deviceLimitHelp")}
+                        </FormHelperText>
+                      </FormControl>
 
                       <FormControl mb={"10px"}>
                         <FormLabel>
