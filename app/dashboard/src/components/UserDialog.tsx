@@ -404,8 +404,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
         onClose();
       })
       .catch((err) => {
-        if (err?.response?.status === 409 || err?.response?.status === 400)
-          setError(err?.response?._data?.detail);
+        if (err?.response?.status === 409 || err?.response?.status === 400 || err?.response?.status === 403) {
+          const detail = err?.response?._data?.detail;
+          const errorMap: Record<string, string> = {
+            "USER_LIMIT_REACHED": t("admins.userLimitReached"),
+            "TRAFFIC_LIMIT_REACHED": t("admins.trafficLimitReached"),
+            "USER_DATA_EXCEEDS_ADMIN_BUDGET": t("admins.dataExceedsBudget"),
+            "MUST_SET_DATA_LIMIT": t("admins.mustSetDataLimit"),
+          };
+          setError(errorMap[detail] || detail);
+        }
         if (err?.response?.status === 422) {
           Object.keys(err.response._data.detail).forEach((key) => {
             setError(err?.response._data.detail[key] as string);

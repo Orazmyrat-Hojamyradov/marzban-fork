@@ -45,7 +45,13 @@ class Admin(Base):
     telegram_id = Column(BigInteger, nullable=True, default=None)
     discord_webhook = Column(String(1024), nullable=True, default=None)
     users_usage = Column(BigInteger, nullable=False, default=0)
+    user_limit = Column(Integer, nullable=True, default=None)
+    traffic_limit = Column(BigInteger, nullable=True, default=None)
     usage_logs = relationship("AdminUsageLogs", back_populates="admin")
+
+    @property
+    def user_count(self) -> int:
+        return len(self.users) if self.users else 0
 
 
 class AdminUsageLogs(Base):
@@ -94,6 +100,8 @@ class User(Base):
 
     device_limit = Column(Integer, nullable=True, default=None)
     devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
+
+    smart_host_address = Column(String(256), nullable=True, default=None)
 
     edit_at = Column(DateTime, nullable=True, default=None)
     last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)

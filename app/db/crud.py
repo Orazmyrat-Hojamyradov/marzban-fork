@@ -651,6 +651,13 @@ def update_user_sub(db: Session, dbuser: User, user_agent: str) -> User:
     return dbuser
 
 
+def update_user_smart_host(db: Session, dbuser: User, smart_host_address: str) -> User:
+    dbuser.smart_host_address = smart_host_address
+    db.commit()
+    db.refresh(dbuser)
+    return dbuser
+
+
 def reset_all_users_data_usage(db: Session, admin: Optional[Admin] = None):
     """
     Resets the data usage for all users or users under a specific admin.
@@ -936,7 +943,9 @@ def create_admin(db: Session, admin: AdminCreate) -> Admin:
         hashed_password=admin.hashed_password,
         is_sudo=admin.is_sudo,
         telegram_id=admin.telegram_id if admin.telegram_id else None,
-        discord_webhook=admin.discord_webhook if admin.discord_webhook else None
+        discord_webhook=admin.discord_webhook if admin.discord_webhook else None,
+        user_limit=admin.user_limit or None,
+        traffic_limit=admin.traffic_limit or None,
     )
     db.add(dbadmin)
     db.commit()
@@ -965,6 +974,8 @@ def update_admin(db: Session, dbadmin: Admin, modified_admin: AdminModify) -> Ad
         dbadmin.telegram_id = modified_admin.telegram_id
     if modified_admin.discord_webhook:
         dbadmin.discord_webhook = modified_admin.discord_webhook
+    dbadmin.user_limit = modified_admin.user_limit or None
+    dbadmin.traffic_limit = modified_admin.traffic_limit or None
 
     db.commit()
     db.refresh(dbadmin)
@@ -992,6 +1003,10 @@ def partial_update_admin(db: Session, dbadmin: Admin, modified_admin: AdminParti
         dbadmin.telegram_id = modified_admin.telegram_id
     if modified_admin.discord_webhook is not None:
         dbadmin.discord_webhook = modified_admin.discord_webhook
+    if modified_admin.user_limit is not None:
+        dbadmin.user_limit = modified_admin.user_limit or None
+    if modified_admin.traffic_limit is not None:
+        dbadmin.traffic_limit = modified_admin.traffic_limit or None
 
     db.commit()
     db.refresh(dbadmin)

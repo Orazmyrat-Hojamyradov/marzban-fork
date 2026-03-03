@@ -56,9 +56,37 @@ def add_user(
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
 
+    dbadmin = crud.get_admin(db, admin.username)
+
+    if not admin.is_sudo and dbadmin.user_limit is not None:
+        user_count = crud.get_users_count(db, admin=dbadmin)
+        if user_count >= dbadmin.user_limit:
+            raise HTTPException(
+                status_code=403,
+                detail="USER_LIMIT_REACHED",
+            )
+
+    if not admin.is_sudo and dbadmin.traffic_limit is not None:
+        if dbadmin.users_usage >= dbadmin.traffic_limit:
+            raise HTTPException(
+                status_code=403,
+                detail="TRAFFIC_LIMIT_REACHED",
+            )
+        remaining_traffic = dbadmin.traffic_limit - dbadmin.users_usage
+        if new_user.data_limit and new_user.data_limit > remaining_traffic:
+            raise HTTPException(
+                status_code=403,
+                detail="USER_DATA_EXCEEDS_ADMIN_BUDGET",
+            )
+        if not new_user.data_limit or new_user.data_limit == 0:
+            raise HTTPException(
+                status_code=403,
+                detail="MUST_SET_DATA_LIMIT",
+            )
+
     try:
         dbuser = crud.create_user(
-            db, new_user, admin=crud.get_admin(db, admin.username)
+            db, new_user, admin=dbadmin
         )
     except IntegrityError:
         db.rollback()
@@ -109,6 +137,21 @@ def modify_user(
                 status_code=400,
                 detail=f"Protocol {proxy_type} is disabled on your server",
             )
+
+    if not admin.is_sudo:
+        dbadmin = crud.get_admin(db, admin.username)
+        if dbadmin.traffic_limit is not None:
+            if dbadmin.users_usage >= dbadmin.traffic_limit:
+                raise HTTPException(
+                    status_code=403,
+                    detail="TRAFFIC_LIMIT_REACHED",
+                )
+            remaining_traffic = dbadmin.traffic_limit - dbadmin.users_usage
+            if modified_user.data_limit and modified_user.data_limit > remaining_traffic:
+                raise HTTPException(
+                    status_code=403,
+                    detail="USER_DATA_EXCEEDS_ADMIN_BUDGET",
+                )
 
     old_status = dbuser.status
     dbuser = crud.update_user(db, dbuser, modified_user)

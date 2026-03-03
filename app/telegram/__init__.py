@@ -11,7 +11,7 @@ if TELEGRAM_API_TOKEN:
     apihelper.proxy = {'http': TELEGRAM_PROXY_URL, 'https': TELEGRAM_PROXY_URL}
     bot = TeleBot(TELEGRAM_API_TOKEN)
 
-handler_names = ["admin", "report", "user"]
+handler_names = ["admin", "report", "user", "smart_host"]
 
 @app.on_event("startup")
 def start_bot():

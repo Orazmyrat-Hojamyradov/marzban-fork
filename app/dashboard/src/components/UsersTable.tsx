@@ -3,6 +3,7 @@ import {
   AccordionButton,
   AccordionItem,
   AccordionPanel,
+  Badge,
   Box,
   Button,
   chakra,
@@ -44,6 +45,7 @@ import CopyToClipboard from "react-copy-to-clipboard";
 import { useTranslation } from "react-i18next";
 import { User } from "types/User";
 import { formatBytes } from "utils/formatByte";
+import useGetUser from "hooks/useGetUser";
 import { OnlineBadge } from "./OnlineBadge";
 import { OnlineStatus } from "./OnlineStatus";
 import { Pagination } from "./Pagination";
@@ -196,6 +198,8 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
   } = useDashboard();
 
   const { t } = useTranslation();
+  const { userData } = useGetUser();
+  const isSudo = userData?.is_sudo;
   const [selectedRow, setSelectedRow] = useState<ExpandedIndex | undefined>(
     undefined
   );
@@ -356,6 +360,17 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                         <div className="flex-status">
                           <OnlineBadge lastOnline={user.online_at} />
                           <Text isTruncated>{user.username}</Text>
+                          {isSudo && user.admin && (
+                            <Badge
+                              colorScheme="purple"
+                              fontSize="2xs"
+                              variant="subtle"
+                              ml={1}
+                              flexShrink={0}
+                            >
+                              {user.admin.username}
+                            </Badge>
+                          )}
                         </div>
                       </Td>
                       <Td borderBottom={0} minW="50px" pl={0} pr={0}>
@@ -594,6 +609,16 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                     <div className="flex-status">
                       <OnlineBadge lastOnline={user.online_at} />
                       {user.username}
+                      {isSudo && user.admin && (
+                        <Badge
+                          colorScheme="purple"
+                          fontSize="2xs"
+                          variant="subtle"
+                          ml={1}
+                        >
+                          {user.admin.username}
+                        </Badge>
+                      )}
                       <OnlineStatus lastOnline={user.online_at} />
                     </div>
                   </Td>

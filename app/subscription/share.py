@@ -23,6 +23,7 @@ from config import (
     EXPIRED_STATUS_TEXT,
     LIMITED_STATUS_TEXT,
     ONHOLD_STATUS_TEXT,
+    SMART_HOST_DEFAULT,
 )
 
 SERVER_IP = get_public_ip()
@@ -226,6 +227,7 @@ def setup_format_variables(extra_data: dict) -> dict:
         "TIME_LEFT": time_left,
         "STATUS_EMOJI": status_emoji,
         "USAGE_PERCENTAGE": usage_Percentage,
+        "SMART_HOST": extra_data.get("smart_host_address") or SMART_HOST_DEFAULT,
     }
 
     # Format the status text using the temporary variables

@@ -24,6 +24,9 @@ class Admin(BaseModel):
     telegram_id: Optional[int] = None
     discord_webhook: Optional[str] = None
     users_usage: Optional[int] = None
+    user_limit: Optional[int] = None
+    traffic_limit: Optional[int] = None
+    user_count: Optional[int] = None
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("users_usage",  mode='before')
@@ -93,6 +96,8 @@ class AdminCreate(Admin):
     password: str
     telegram_id: Optional[int] = None
     discord_webhook: Optional[str] = None
+    user_limit: Optional[int] = None
+    traffic_limit: Optional[int] = None
 
     @property
     def hashed_password(self):
@@ -111,6 +116,8 @@ class AdminModify(BaseModel):
     is_sudo: bool
     telegram_id: Optional[int] = None
     discord_webhook: Optional[str] = None
+    user_limit: Optional[int] = None
+    traffic_limit: Optional[int] = None
 
     @property
     def hashed_password(self):

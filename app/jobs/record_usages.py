@@ -9,9 +9,10 @@ from sqlalchemy import and_, bindparam, insert, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.dml import Insert
 
-from app import scheduler, xray
+from app import logger, scheduler, xray
 from app.db import GetDB
 from app.db.models import Admin, NodeUsage, NodeUserUsage, System, User
+from app.models.user import UserStatus
 from config import (
     DISABLE_RECORDING_NODE_USAGE,
     JOB_RECORD_NODE_USAGES_INTERVAL,
@@ -175,6 +176,31 @@ def record_user_usages():
                 where(Admin.id == bindparam('admin_id')). \
                 values(users_usage=Admin.users_usage + bindparam('value'))
             safe_execute(db, admin_update_stmt, admin_data)
+
+    # Enforce admin traffic limits
+    with GetDB() as db:
+        over_limit_admins = db.query(Admin).filter(
+            Admin.traffic_limit.isnot(None),
+            Admin.users_usage >= Admin.traffic_limit,
+            Admin.is_sudo == False,
+        ).all()
+        users_to_disable = []
+        for adm in over_limit_admins:
+            active_users = db.query(User).filter(
+                User.admin_id == adm.id,
+                User.status.in_([UserStatus.active, UserStatus.on_hold]),
+            ).all()
+            for user in active_users:
+                user.status = UserStatus.disabled
+                users_to_disable.append(user)
+                logger.info(f'User "{user.username}" disabled (admin "{adm.username}" traffic limit exceeded)')
+        if users_to_disable:
+            db.commit()
+            startup_config = xray.config.include_db_users()
+            xray.core.restart(startup_config)
+            for node_id, node in list(xray.nodes.items()):
+                if node.connected:
+                    xray.operations.restart_node(node_id, startup_config)
 
     if DISABLE_RECORDING_NODE_USAGE:
         return

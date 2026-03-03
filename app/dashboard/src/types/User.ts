@@ -52,6 +52,7 @@ export type User = {
   online_at: string;
   device_limit: number | null;
   device_count: number;
+  admin: { username: string } | null;
 };
 
 export type UserCreate = Pick<

@@ -77,6 +77,8 @@ class User(BaseModel):
 
     device_limit: Optional[int] = Field(None, nullable=True)
 
+    smart_host_address: Optional[str] = Field(None, nullable=True)
+
     next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
 
     @field_validator('data_limit', mode='before')
@@ -336,6 +338,7 @@ class SubscriptionUserResponse(UserResponse):
     note: str | None = Field(None, exclude=True)
     inbounds: Dict[ProxyTypes, List[str]] | None = Field(None, exclude=True)
     auto_delete_in_days: int | None = Field(None, exclude=True)
+    smart_host_address: str | None = Field(None, exclude=True)
     model_config = ConfigDict(from_attributes=True)
 
 
