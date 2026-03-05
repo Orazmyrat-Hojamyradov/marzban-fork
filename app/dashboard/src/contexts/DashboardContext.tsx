@@ -71,6 +71,7 @@ type DashboardStateType = {
   fetchUserDevices: (user: User) => Promise<UserDevicesResponse>;
   deleteUserDevice: (user: User, deviceId: number) => Promise<void>;
   deleteAllUserDevices: (user: User) => Promise<void>;
+  getCrypt5Link: (username: string) => Promise<string>;
 };
 
 const fetchUsers = (query: FilterType): Promise<User[]> => {
@@ -229,6 +230,10 @@ export const useDashboard = create(
       }).then(() => {
         get().refetchUsers();
       });
+    },
+    getCrypt5Link: async (username: string): Promise<string> => {
+      const result = await fetch<{ link: string }>(`/user/${username}/happ-crypt5`);
+      return result.link;
     },
   }))
 );

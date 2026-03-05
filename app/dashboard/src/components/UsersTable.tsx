@@ -32,6 +32,7 @@ import {
   ChevronDownIcon,
   ClipboardIcon,
   LinkIcon,
+  LockClosedIcon,
   PencilIcon,
   QrCodeIcon,
 } from "@heroicons/react/24/outline";
@@ -71,6 +72,7 @@ const CopiedIcon = chakra(CheckIcon, iconProps);
 const SubscriptionLinkIcon = chakra(LinkIcon, iconProps);
 const QRIcon = chakra(QrCodeIcon, iconProps);
 const EditIcon = chakra(PencilIcon, iconProps);
+const HappIcon = chakra(LockClosedIcon, iconProps);
 const SortIcon = chakra(ChevronDownIcon, {
   baseStyle: {
     width: "15px",
@@ -662,11 +664,13 @@ type ActionButtonsProps = {
 };
 
 const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
-  const { setQRCode, setSubLink } = useDashboard();
+  const { setQRCode, setSubLink, getCrypt5Link } = useDashboard();
 
   const proxyLinks = user.links.join("\r\n");
 
   const [copied, setCopied] = useState([-1, false]);
+  const [crypt5Loading, setCrypt5Loading] = useState(false);
+
   useEffect(() => {
     if (copied[1]) {
       setTimeout(() => {
@@ -674,6 +678,18 @@ const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
       }, 1000);
     }
   }, [copied]);
+
+  const handleCrypt5Copy = async () => {
+    setCrypt5Loading(true);
+    try {
+      const link = await getCrypt5Link(user.username);
+      navigator.clipboard.writeText(link);
+      setCopied([2, true]);
+    } finally {
+      setCrypt5Loading(false);
+    }
+  };
+
   return (
     <HStack
       justifyContent="flex-end"
@@ -778,6 +794,26 @@ const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
           }}
         >
           <QRIcon />
+        </IconButton>
+      </Tooltip>
+      <Tooltip
+        label={
+          copied[0] == 2 && copied[1]
+            ? t("usersTable.copied")
+            : t("usersTable.copyHappCrypt5")
+        }
+        placement="top"
+      >
+        <IconButton
+          p="0 !important"
+          aria-label="copy happ crypt5 link"
+          bg="transparent"
+          isLoading={crypt5Loading}
+          _dark={{ _hover: { bg: "gray.700" } }}
+          size={{ base: "sm", md: "md" }}
+          onClick={handleCrypt5Copy}
+        >
+          {copied[0] == 2 && copied[1] ? <CopiedIcon /> : <HappIcon />}
         </IconButton>
       </Tooltip>
     </HStack>

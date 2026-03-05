@@ -43,3 +43,5 @@ _403 = {"description": "Forbidden Error", "model": Forbidden}
 _404 = {"description": "NotFound Error", "model": NotFound}
 
 _409 = {"description": "Conflict Error", "model": Conflict}
+
+_503 = {"description": "Service Unavailable", "model": HTTPException}

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Union
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 from sqlalchemy.exc import IntegrityError
 
 from app import logger, xray
@@ -475,3 +475,29 @@ def delete_all_user_devices(
     """Delete all devices registered to a user"""
     count = crud.delete_all_user_devices(db, dbuser.id)
     return {"detail": f"{count} device(s) successfully deleted"}
+
+
+@router.get("/user/{username}/happ-crypt5", responses={503: responses._503})
+def get_user_happ_crypt5(
+    request: Request,
+    dbuser: UserResponse = Depends(get_validated_user),
+):
+    """Generate Happ crypt5 encrypted subscription link for a user."""
+    import requests as req
+
+    sub_url = dbuser.subscription_url
+    if sub_url.startswith("/"):
+        sub_url = str(request.base_url).rstrip("/") + sub_url
+
+    try:
+        resp = req.post(
+            "https://crypto.happ.su/api-v2.php",
+            json={"url": sub_url},
+            timeout=10,
+        )
+        data = resp.json()
+        if "encrypted_link" in data:
+            return {"link": data["encrypted_link"]}
+        raise HTTPException(status_code=503, detail="Crypto service returned invalid response")
+    except req.exceptions.RequestException:
+        raise HTTPException(status_code=503, detail="Crypto service unavailable")
