@@ -679,17 +679,39 @@ const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
     }
   }, [copied]);
 
+  const copyTextFallback = (text: string) => {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.style.position = "fixed";
+    el.style.opacity = "0";
+    document.body.appendChild(el);
+    el.focus();
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+  };
+
+  const copyText = (text: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).catch(() => copyTextFallback(text));
+    } else {
+      copyTextFallback(text);
+    }
+  };
+
   const handleCrypt5Copy = async () => {
     if (user.crypt5_link) {
-      navigator.clipboard.writeText(user.crypt5_link);
+      copyText(user.crypt5_link);
       setCopied([2, true]);
       return;
     }
     setCrypt5Loading(true);
     try {
       const link = await getCrypt5Link(user.username);
-      navigator.clipboard.writeText(link);
+      copyText(link);
       setCopied([2, true]);
+    } catch {
+      // API unavailable - nothing to copy
     } finally {
       setCrypt5Loading(false);
     }
