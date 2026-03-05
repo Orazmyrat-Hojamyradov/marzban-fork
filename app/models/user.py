@@ -291,6 +291,7 @@ class UserResponse(User):
     created_at: datetime
     links: List[str] = []
     subscription_url: str = ""
+    crypt5_link: Optional[str] = None
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
     device_count: int = 0

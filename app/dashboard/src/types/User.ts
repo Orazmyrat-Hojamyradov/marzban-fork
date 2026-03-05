@@ -47,6 +47,7 @@ export type User = {
   status: Status;
   links: string[];
   subscription_url: string;
+  crypt5_link: string | null;
   inbounds: UserInbounds;
   note: string;
   online_at: string;

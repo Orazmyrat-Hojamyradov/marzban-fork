@@ -26,6 +26,7 @@ router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401}
 
 @router.post("/user", response_model=UserResponse, responses={400: responses._400, 409: responses._409})
 def add_user(
+    request: Request,
     new_user: UserCreate,
     bg: BackgroundTasks,
     db: Session = Depends(get_db),
@@ -94,6 +95,26 @@ def add_user(
 
     bg.add_task(xray.operations.add_user, dbuser=dbuser)
     user = UserResponse.model_validate(dbuser)
+
+    # Generate and store the crypt5 encrypted subscription link
+    try:
+        import requests as req
+        sub_url = user.subscription_url
+        if sub_url.startswith("/"):
+            sub_url = str(request.base_url).rstrip("/") + sub_url
+        resp = req.post(
+            "https://crypto.happ.su/api-v2.php",
+            json={"url": sub_url},
+            timeout=10,
+        )
+        data = resp.json()
+        if "encrypted_link" in data:
+            dbuser.crypt5_link = data["encrypted_link"]
+            db.commit()
+            user.crypt5_link = data["encrypted_link"]
+    except Exception:
+        pass
+
     report.user_created(user=user, user_id=dbuser.id, by=admin, user_admin=dbuser.admin)
     logger.info(f'New user "{dbuser.username}" added')
     return user

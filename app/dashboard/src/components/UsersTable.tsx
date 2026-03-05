@@ -680,6 +680,11 @@ const ActionButtons: FC<ActionButtonsProps> = ({ user }) => {
   }, [copied]);
 
   const handleCrypt5Copy = async () => {
+    if (user.crypt5_link) {
+      navigator.clipboard.writeText(user.crypt5_link);
+      setCopied([2, true]);
+      return;
+    }
     setCrypt5Loading(true);
     try {
       const link = await getCrypt5Link(user.username);

@@ -103,6 +103,8 @@ class User(Base):
 
     smart_host_address = Column(String(256), nullable=True, default=None)
 
+    crypt5_link = Column(String(512), nullable=True, default=None)
+
     edit_at = Column(DateTime, nullable=True, default=None)
     last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)
 

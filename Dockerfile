@@ -6,14 +6,19 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /code
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential curl unzip gcc python3-dev libpq-dev \
-    && curl -L https://github.com/Gozargah/Marzban-scripts/raw/master/install_latest_xray.sh | bash \
-    && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
+    && apt-get install -y --no-install-recommends build-essential curl unzip gcc libpq-dev
+
+# Separate layer so xray is cached independently of apt
+RUN curl --retry 5 --retry-delay 3 -L \
+    https://github.com/Gozargah/Marzban-scripts/raw/master/install_latest_xray.sh | bash
 
 COPY ./requirements.txt /code/
-RUN python3 -m pip install --upgrade pip setuptools \
-    && pip install --no-cache-dir --upgrade -r /code/requirements.txt
+ENV PIP_DEFAULT_TIMEOUT=300
+RUN /usr/local/bin/pip install --no-cache-dir setuptools && \
+    /usr/local/bin/pip install --no-cache-dir -r /code/requirements.txt
 
 FROM python:$PYTHON_VERSION-slim
 
@@ -24,7 +29,7 @@ COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3
 COPY --from=build /usr/local/bin /usr/local/bin
 COPY --from=build /usr/local/share/xray /usr/local/share/xray
 
-RUN pip install --no-cache-dir "setuptools<78"
+RUN --mount=type=cache,target=/root/.cache/pip pip install "setuptools<78"
 
 COPY . /code
 
