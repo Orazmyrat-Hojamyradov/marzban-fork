@@ -69,21 +69,17 @@ def add_user(
             )
 
     if not admin.is_sudo and dbadmin.traffic_limit is not None:
-        if dbadmin.users_usage >= dbadmin.traffic_limit:
-            raise HTTPException(
-                status_code=403,
-                detail="TRAFFIC_LIMIT_REACHED",
-            )
-        remaining_traffic = dbadmin.traffic_limit - dbadmin.users_usage
-        if new_user.data_limit and new_user.data_limit > remaining_traffic:
-            raise HTTPException(
-                status_code=403,
-                detail="USER_DATA_EXCEEDS_ADMIN_BUDGET",
-            )
         if not new_user.data_limit or new_user.data_limit == 0:
             raise HTTPException(
                 status_code=403,
                 detail="MUST_SET_DATA_LIMIT",
+            )
+        allocated = crud.get_admin_allocated_data(db, dbadmin)
+        remaining = dbadmin.traffic_limit - allocated
+        if new_user.data_limit > remaining:
+            raise HTTPException(
+                status_code=403,
+                detail="USER_DATA_EXCEEDS_ADMIN_BUDGET",
             )
 
     try:
@@ -156,17 +152,14 @@ def modify_user(
     if not admin.is_sudo:
         dbadmin = crud.get_admin(db, admin.username)
         if dbadmin.traffic_limit is not None:
-            if dbadmin.users_usage >= dbadmin.traffic_limit:
-                raise HTTPException(
-                    status_code=403,
-                    detail="TRAFFIC_LIMIT_REACHED",
-                )
-            remaining_traffic = dbadmin.traffic_limit - dbadmin.users_usage
-            if modified_user.data_limit and modified_user.data_limit > remaining_traffic:
-                raise HTTPException(
-                    status_code=403,
-                    detail="USER_DATA_EXCEEDS_ADMIN_BUDGET",
-                )
+            if modified_user.data_limit:
+                allocated = crud.get_admin_allocated_data(db, dbadmin, exclude_user_id=dbuser.id)
+                remaining = dbadmin.traffic_limit - allocated
+                if modified_user.data_limit > remaining:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="USER_DATA_EXCEEDS_ADMIN_BUDGET",
+                    )
 
     old_status = dbuser.status
     dbuser = crud.update_user(db, dbuser, modified_user)

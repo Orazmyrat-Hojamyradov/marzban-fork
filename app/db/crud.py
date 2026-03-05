@@ -355,6 +355,17 @@ def get_users_count(db: Session, status: UserStatus = None, admin: Admin = None)
     return query.count()
 
 
+def get_admin_allocated_data(db: Session, admin: Admin, exclude_user_id: int = None) -> int:
+    """Sum of data_limit for all users under this admin (excluding unlimited users)."""
+    query = db.query(func.sum(User.data_limit)).filter(
+        User.admin_id == admin.id,
+        User.data_limit.isnot(None),
+    )
+    if exclude_user_id is not None:
+        query = query.filter(User.id != exclude_user_id)
+    return query.scalar() or 0
+
+
 def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
     """
     Creates a new user with provided details.
