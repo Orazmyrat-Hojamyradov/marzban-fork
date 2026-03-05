@@ -19,6 +19,7 @@ from app.models.user import (
     UserUsagesResponse,
 )
 from app.utils import report, responses
+from app.utils.crypto import generate_happ_crypt4_link
 from config import SUDOERS
 
 router = APIRouter(tags=["User"], prefix="/api", responses={401: responses._401})
@@ -96,22 +97,15 @@ def add_user(
     bg.add_task(xray.operations.add_user, dbuser=dbuser)
     user = UserResponse.model_validate(dbuser)
 
-    # Generate and store the crypt5 encrypted subscription link
+    # Generate and store the Happ crypt4 encrypted subscription link
     try:
-        import requests as req
         sub_url = user.subscription_url
         if sub_url.startswith("/"):
             sub_url = str(request.base_url).rstrip("/") + sub_url
-        resp = req.post(
-            "https://crypto.happ.su/api-v2.php",
-            json={"url": sub_url},
-            timeout=10,
-        )
-        data = resp.json()
-        if "encrypted_link" in data:
-            dbuser.crypt5_link = data["encrypted_link"]
-            db.commit()
-            user.crypt5_link = data["encrypted_link"]
+        crypt4_link = generate_happ_crypt4_link(sub_url)
+        dbuser.crypt5_link = crypt4_link
+        db.commit()
+        user.crypt5_link = crypt4_link
     except Exception:
         pass
 
@@ -503,22 +497,13 @@ def get_user_happ_crypt5(
     request: Request,
     dbuser: UserResponse = Depends(get_validated_user),
 ):
-    """Generate Happ crypt5 encrypted subscription link for a user."""
-    import requests as req
-
+    """Generate Happ crypt4 encrypted subscription link for a user."""
     sub_url = dbuser.subscription_url
     if sub_url.startswith("/"):
         sub_url = str(request.base_url).rstrip("/") + sub_url
 
     try:
-        resp = req.post(
-            "https://crypto.happ.su/api-v2.php",
-            json={"url": sub_url},
-            timeout=10,
-        )
-        data = resp.json()
-        if "encrypted_link" in data:
-            return {"link": data["encrypted_link"]}
-        raise HTTPException(status_code=503, detail="Crypto service returned invalid response")
-    except req.exceptions.RequestException:
-        raise HTTPException(status_code=503, detail="Crypto service unavailable")
+        link = generate_happ_crypt4_link(sub_url)
+        return {"link": link}
+    except Exception:
+        raise HTTPException(status_code=503, detail="Failed to generate encrypted link")
