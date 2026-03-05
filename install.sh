@@ -191,9 +191,15 @@ install_marzban() {
 
     if [ -d "$APP_DIR/.git" ]; then
         colorized_echo yellow "Repository already exists, pulling latest changes"
+        git -C "$APP_DIR" fetch --all
         git -C "$APP_DIR" pull
     else
         git clone "$REPO_URL" "$APP_DIR"
+    fi
+
+    if [ -n "$COMMIT_HASH" ]; then
+        colorized_echo blue "Checking out commit: $COMMIT_HASH"
+        git -C "$APP_DIR" checkout "$COMMIT_HASH"
     fi
 
     # Create .env if not present
@@ -232,7 +238,12 @@ update_marzban_script() {
 
 update_marzban() {
     colorized_echo blue "Pulling latest code from repository"
+    git -C "$APP_DIR" fetch --all
     git -C "$APP_DIR" pull
+    if [ -n "$COMMIT_HASH" ]; then
+        colorized_echo blue "Checking out commit: $COMMIT_HASH"
+        git -C "$APP_DIR" checkout "$COMMIT_HASH"
+    fi
     colorized_echo blue "Rebuilding Docker image"
     $COMPOSE -f "$COMPOSE_FILE" build
 }
@@ -299,6 +310,14 @@ marzban_cli() {
 # ─── Commands ───────────────────────────────────────────────────────────────
 
 install_command() {
+    local COMMIT_HASH=""
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --commit) COMMIT_HASH="$2"; shift 2 ;;
+            *) echo "Error: Invalid option: $1" >&2; exit 1 ;;
+        esac
+    done
+
     check_running_as_root
 
     if is_marzban_installed; then
@@ -430,6 +449,14 @@ cli_command() {
 }
 
 update_command() {
+    local COMMIT_HASH=""
+    while [[ "$#" -gt 0 ]]; do
+        case "$1" in
+            --commit) COMMIT_HASH="$2"; shift 2 ;;
+            *) echo "Error: Invalid option: $1" >&2; exit 1 ;;
+        esac
+    done
+
     check_running_as_root
     if ! is_marzban_installed; then colorized_echo red "Marzban's not installed!"; exit 1; fi
     detect_compose
@@ -828,8 +855,8 @@ usage() {
     colorized_echo yellow "  status          $(tput sgr0)– Show status"
     colorized_echo yellow "  logs            $(tput sgr0)– Show logs"
     colorized_echo yellow "  cli             $(tput sgr0)– Marzban CLI"
-    colorized_echo yellow "  install         $(tput sgr0)– Install Marzban"
-    colorized_echo yellow "  update          $(tput sgr0)– Update to latest version"
+    colorized_echo yellow "  install         $(tput sgr0)– Install Marzban [--commit <hash>]"
+    colorized_echo yellow "  update          $(tput sgr0)– Update to latest version [--commit <hash>]"
     colorized_echo yellow "  uninstall       $(tput sgr0)– Uninstall Marzban"
     colorized_echo yellow "  install-script  $(tput sgr0)– Install Marzban script"
     colorized_echo yellow "  backup          $(tput sgr0)– Manual backup launch"
