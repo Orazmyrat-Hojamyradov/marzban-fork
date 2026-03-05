@@ -411,6 +411,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
             "TRAFFIC_LIMIT_REACHED": t("admins.trafficLimitReached"),
             "USER_DATA_EXCEEDS_ADMIN_BUDGET": t("admins.dataExceedsBudget"),
             "MUST_SET_DATA_LIMIT": t("admins.mustSetDataLimit"),
+            "User already exists": t("userDialog.userAlreadyExists"),
           };
           setError(errorMap[detail] || detail);
         }

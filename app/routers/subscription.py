@@ -1,6 +1,9 @@
+import base64
+import json
 import re
 from distutils.version import LooseVersion
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Header, Path, Request, Response
 from fastapi.responses import HTMLResponse
@@ -50,18 +53,19 @@ def get_subscription_user_info(user: UserResponse) -> dict:
     }
 
 
-def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> tuple[Optional[Response], bool]:
+def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> tuple[Optional[Response], bool, bool]:
     """
     Enforce HWID-based device limiting.
-    
+
     Returns:
-        tuple: (response, is_blocked)
+        tuple: (response, is_blocked, is_limit_reached)
             - response: Response object if request should be blocked/limited, None otherwise
             - is_blocked: True if device is disabled/blocked (should return empty inbounds)
+            - is_limit_reached: True if device limit is exceeded (should return warning subscription)
     """
     if not HWID_ENABLED:
-        return (None, False)
-    
+        return (None, False, False)
+
     hwid = request.headers.get("x-hwid", "").strip() or None
     platform = request.headers.get("x-device-os", "").strip() or None
     os_version = request.headers.get("x-ver-os", "").strip() or None
@@ -73,8 +77,8 @@ def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> tup
     allowed, reason = crud.check_hwid_limit(db, dbuser, hwid)
     if not allowed:
         logger.warning(f"HWID limit check failed for user {dbuser.username}: hwid={hwid}, reason={reason}, device_limit={dbuser.device_limit}")
-        return (Response(content="", media_type="text/plain", headers={"x-hwid-limit": "true"}), False)
-    
+        return (None, False, True)
+
     # Check if this HWID is disabled/blocked
     if hwid:
         existing = crud.get_user_device_by_hwid(db, dbuser.id, hwid)
@@ -82,8 +86,8 @@ def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> tup
             if existing.disabled:
                 # Device is blocked - return is_blocked=True to generate empty inbounds
                 logger.info(f"Blocked device {hwid} updating subscription for user {dbuser.username} - returning empty inbounds")
-                return (None, True)
-            
+                return (None, True, False)
+
             # Update existing device info
             crud.update_user_device(db, existing, platform=platform, os_version=os_version,
                                     device_model=device_model, user_agent=user_agent or None)
@@ -96,8 +100,45 @@ def _enforce_hwid(request: Request, db: Session, dbuser, user_agent: str) -> tup
             except IntegrityError:
                 db.rollback()
                 logger.warning(f"Device registration race condition for user {dbuser.username}: hwid={hwid}")
-    
-    return (None, False)
+
+    return (None, False, False)
+
+
+def _generate_device_limit_warning_response(config_format: str) -> Response:
+    """Generate a subscription response with a single warning entry for device limit exceeded."""
+    WARNING_NAME = "⚠️ Лимит устройств достигнут"
+    headers = {"x-hwid-limit": "true"}
+
+    if config_format in ("clash", "clash-meta"):
+        content = (
+            'proxies:\n'
+            f'  - name: "{WARNING_NAME}"\n'
+            '    type: socks5\n'
+            '    server: 0.0.0.0\n'
+            '    port: 1\n'
+            'proxy-groups:\n'
+            f'  - name: "{WARNING_NAME}"\n'
+            '    type: select\n'
+            '    proxies:\n'
+            f'      - "{WARNING_NAME}"\n'
+            'rules:\n'
+            f'  - MATCH,{WARNING_NAME}\n'
+        )
+        return Response(content=content, media_type="text/yaml", headers=headers)
+
+    elif config_format == "sing-box":
+        content = json.dumps({
+            "outbounds": [
+                {"type": "socks", "tag": WARNING_NAME, "server": "0.0.0.0", "server_port": 1}
+            ]
+        })
+        return Response(content=content, media_type="application/json", headers=headers)
+
+    else:
+        # V2Ray base64 format (default for v2ray, v2ray-json, outline, unknown)
+        link = f"vless://00000000-0000-0000-0000-000000000001@0.0.0.0:0?type=tcp#{quote(WARNING_NAME)}"
+        content = base64.b64encode(link.encode()).decode()
+        return Response(content=content, media_type="text/plain", headers=headers)
 
 
 @router.get("/{token}/")
@@ -120,9 +161,19 @@ def user_subscription(
             )
         )
 
-    hwid_response, is_blocked = _enforce_hwid(request, db, dbuser, user_agent)
+    hwid_response, is_blocked, is_limit_reached = _enforce_hwid(request, db, dbuser, user_agent)
     if hwid_response is not None:
         return hwid_response
+
+    if is_limit_reached:
+        if re.match(r'^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)', user_agent):
+            return _generate_device_limit_warning_response("clash-meta")
+        elif re.match(r'^([Cc]lash|[Ss]tash)', user_agent):
+            return _generate_device_limit_warning_response("clash")
+        elif re.match(r'^(SFA|SFI|SFM|SFT|[Kk]aring|[Hh]iddify[Nn]ext)|.*sing[-b]?ox.*', user_agent, re.IGNORECASE):
+            return _generate_device_limit_warning_response("sing-box")
+        else:
+            return _generate_device_limit_warning_response("v2ray")
 
     crud.update_user_sub(db, dbuser, user_agent)
     response_headers = {
@@ -243,9 +294,12 @@ def user_subscription_with_client_type(
     """Provides a subscription link based on the specified client type (e.g., Clash, V2Ray)."""
     user: UserResponse = UserResponse.model_validate(dbuser)
 
-    hwid_response, is_blocked = _enforce_hwid(request, db, dbuser, user_agent)
+    hwid_response, is_blocked, is_limit_reached = _enforce_hwid(request, db, dbuser, user_agent)
     if hwid_response is not None:
         return hwid_response
+
+    if is_limit_reached:
+        return _generate_device_limit_warning_response(client_type)
 
     response_headers = {
         "content-disposition": f'attachment; filename="{user.username}"',

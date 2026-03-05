@@ -60,6 +60,11 @@ def create_admin(
     admin: Admin = Depends(Admin.check_sudo_admin),
 ):
     """Create a new admin if the current admin has sudo privileges."""
+    if new_admin.is_sudo:
+        raise HTTPException(
+            status_code=403,
+            detail="Sudo admins can only be created via CLI. Use marzban-cli instead.",
+        )
     try:
         dbadmin = crud.create_admin(db, new_admin)
     except IntegrityError:
@@ -85,6 +90,12 @@ def modify_admin(
         raise HTTPException(
             status_code=403,
             detail="You're not allowed to edit another sudoer's account. Use marzban-cli instead.",
+        )
+
+    if modified_admin.is_sudo and not dbadmin.is_sudo:
+        raise HTTPException(
+            status_code=403,
+            detail="Sudo status can only be granted via CLI. Use marzban-cli instead.",
         )
 
     updated_admin = crud.update_admin(db, dbadmin, modified_admin)

@@ -13,14 +13,13 @@ import {
   ModalHeader,
   ModalOverlay,
   Spinner,
-  Switch,
   VStack,
   useToast,
 } from "@chakra-ui/react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAdmins } from "contexts/AdminsContext";
 import { FC, useEffect, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 
@@ -196,17 +195,6 @@ export const AdminDialog: FC = () => {
                 <FormErrorMessage>
                   {form.formState.errors.password?.message}
                 </FormErrorMessage>
-              </FormControl>
-
-              <FormControl display="flex" alignItems="center">
-                <FormLabel mb="0">{t("admins.isSudo")}</FormLabel>
-                <Controller
-                  name="is_sudo"
-                  control={form.control}
-                  render={({ field: { onChange, value } }) => (
-                    <Switch isChecked={value} onChange={onChange} />
-                  )}
-                />
               </FormControl>
 
               <FormControl>
