@@ -5,6 +5,7 @@ services:
     env_file: .env
     ports:
       - "8000:8000"
+      - "2027:2027"
     environment:
       - DEBUG=false
     command: bash -c "alembic upgrade head; uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1"
