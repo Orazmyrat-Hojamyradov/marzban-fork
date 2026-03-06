@@ -302,62 +302,29 @@ if [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "1" ]]; then
         apt-get install -y -qq certbot
     fi
 
-    CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
-    KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
-    CERT_OBTAINED=false
+    mkdir -p /etc/ssl/marzban
+    CERT_PATH="/etc/ssl/marzban/fullchain.pem"
+    KEY_PATH="/etc/ssl/marzban/privkey.pem"
 
-    info "Trying Let's Encrypt..."
-    certbot certonly --standalone --non-interactive --agree-tos \
-        --register-unsafely-without-email -d "$DOMAIN" \
-        2>/tmp/certbot-le.log && CERT_OBTAINED=true || true
-
-    if [[ "$CERT_OBTAINED" == "false" ]]; then
-        if grep -q "too many certificates" /tmp/certbot-le.log 2>/dev/null; then
-            warn "Let's Encrypt rate limit hit — switching to ZeroSSL via acme.sh..."
-        else
-            cat /tmp/certbot-le.log >&2
-            error "certbot failed. Check /var/log/letsencrypt/letsencrypt.log"
-        fi
-
-        # Install acme.sh if missing
-        if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
-            info "Installing acme.sh..."
-            curl -fsSL https://get.acme.sh | sh -s -- --install-online 2>/dev/null
-            # shellcheck source=/dev/null
-            source "$HOME/.acme.sh/acme.sh.env" 2>/dev/null || true
-        fi
-        ACME="$HOME/.acme.sh/acme.sh"
-
-        info "Registering ZeroSSL account..."
-        "$ACME" --register-account -m "ssl@${DOMAIN}" --server zerossl 2>/dev/null || true
-
-        info "Issuing ZeroSSL certificate for $DOMAIN..."
-        "$ACME" --issue --standalone -d "$DOMAIN" --server zerossl \
-            && CERT_OBTAINED=true || true
-
-        if [[ "$CERT_OBTAINED" == "true" ]]; then
-            mkdir -p /etc/ssl/marzban
-            CERT_PATH="/etc/ssl/marzban/fullchain.pem"
-            KEY_PATH="/etc/ssl/marzban/privkey.pem"
-            "$ACME" --install-cert -d "$DOMAIN" \
-                --fullchain-file "$CERT_PATH" \
-                --key-file "$KEY_PATH" \
-                --reloadcmd "systemctl reload nginx 2>/dev/null || true"
-        fi
+    # Install acme.sh if missing
+    if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
+        info "Installing acme.sh..."
+        curl -fsSL https://get.acme.sh | sh -s -- --install-online
+        source "$HOME/.acme.sh/acme.sh.env" 2>/dev/null || true
     fi
+    ACME="$HOME/.acme.sh/acme.sh"
 
-    if [[ "$CERT_OBTAINED" == "false" ]]; then
-        error "Could not obtain SSL certificate from any provider. Wait for LE rate limit to reset (retry after tomorrow) or provide your own cert."
-    fi
+    info "Registering ZeroSSL account (ssl@${DOMAIN})..."
+    "$ACME" --register-account -m "ssl@${DOMAIN}" --server zerossl
 
-    # Let's Encrypt auto-renew hook
-    if [[ "$CERT_PATH" == /etc/letsencrypt/* ]]; then
-        cat > /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh << 'HOOKEOF'
-#!/bin/bash
-systemctl reload nginx
-HOOKEOF
-        chmod +x /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh
-    fi
+    info "Issuing certificate for $DOMAIN via ZeroSSL..."
+    "$ACME" --issue --standalone -d "$DOMAIN" --server zerossl
+
+    info "Installing certificate to $CERT_PATH..."
+    "$ACME" --install-cert -d "$DOMAIN" \
+        --fullchain-file "$CERT_PATH" \
+        --key-file "$KEY_PATH" \
+        --reloadcmd "systemctl reload nginx 2>/dev/null || true"
 
     success "Certificate obtained: $CERT_PATH"
 elif [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "2" ]]; then
