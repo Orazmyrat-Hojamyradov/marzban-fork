@@ -311,25 +311,53 @@ if [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "1" ]]; then
         --register-unsafely-without-email -d "$DOMAIN" \
         2>/tmp/certbot-le.log && CERT_OBTAINED=true || true
 
-    if [[ "$CERT_OBTAINED" == "false" ]] && grep -q "too many certificates" /tmp/certbot-le.log 2>/dev/null; then
-        warn "Let's Encrypt rate limit hit — trying Buypass (free, no rate limit)..."
-        certbot certonly --standalone --non-interactive --agree-tos \
-            --register-unsafely-without-email \
-            --server https://api.buypass.com/acme/directory \
-            -d "$DOMAIN" && CERT_OBTAINED=true || true
+    if [[ "$CERT_OBTAINED" == "false" ]]; then
+        if grep -q "too many certificates" /tmp/certbot-le.log 2>/dev/null; then
+            warn "Let's Encrypt rate limit hit — switching to ZeroSSL via acme.sh..."
+        else
+            cat /tmp/certbot-le.log >&2
+            error "certbot failed. Check /var/log/letsencrypt/letsencrypt.log"
+        fi
+
+        # Install acme.sh if missing
+        if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
+            info "Installing acme.sh..."
+            curl -fsSL https://get.acme.sh | sh -s -- --install-online 2>/dev/null
+            # shellcheck source=/dev/null
+            source "$HOME/.acme.sh/acme.sh.env" 2>/dev/null || true
+        fi
+        ACME="$HOME/.acme.sh/acme.sh"
+
+        info "Registering ZeroSSL account..."
+        "$ACME" --register-account -m "ssl@${DOMAIN}" --server zerossl 2>/dev/null || true
+
+        info "Issuing ZeroSSL certificate for $DOMAIN..."
+        "$ACME" --issue --standalone -d "$DOMAIN" --server zerossl \
+            && CERT_OBTAINED=true || true
+
+        if [[ "$CERT_OBTAINED" == "true" ]]; then
+            mkdir -p /etc/ssl/marzban
+            CERT_PATH="/etc/ssl/marzban/fullchain.pem"
+            KEY_PATH="/etc/ssl/marzban/privkey.pem"
+            "$ACME" --install-cert -d "$DOMAIN" \
+                --fullchain-file "$CERT_PATH" \
+                --key-file "$KEY_PATH" \
+                --reloadcmd "systemctl reload nginx 2>/dev/null || true"
+        fi
     fi
 
     if [[ "$CERT_OBTAINED" == "false" ]]; then
-        cat /tmp/certbot-le.log >&2 2>/dev/null || true
-        error "Could not obtain SSL certificate. Check /var/log/letsencrypt/letsencrypt.log"
+        error "Could not obtain SSL certificate from any provider. Wait for LE rate limit to reset (retry after tomorrow) or provide your own cert."
     fi
 
-    # Auto-renew hook: reload nginx after renewal
-    cat > /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh << 'HOOKEOF'
+    # Let's Encrypt auto-renew hook
+    if [[ "$CERT_PATH" == /etc/letsencrypt/* ]]; then
+        cat > /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh << 'HOOKEOF'
 #!/bin/bash
 systemctl reload nginx
 HOOKEOF
-    chmod +x /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh
+        chmod +x /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh
+    fi
 
     success "Certificate obtained: $CERT_PATH"
 elif [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "2" ]]; then
