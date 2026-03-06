@@ -304,33 +304,25 @@ if [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "1" ]]; then
 
     CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
     KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+    CERT_OBTAINED=false
 
-    _run_certbot() {
-        local server_arg="${1:-}"
-        local label="${2:-Let's Encrypt}"
-        info "Trying $label..."
-        certbot certonly --standalone \
-            --non-interactive \
-            --agree-tos \
-            --register-unsafely-without-email \
-            ${server_arg:+--server "$server_arg"} \
-            -d "$DOMAIN"
-    }
+    info "Trying Let's Encrypt..."
+    certbot certonly --standalone --non-interactive --agree-tos \
+        --register-unsafely-without-email -d "$DOMAIN" \
+        2>/tmp/certbot-le.log && CERT_OBTAINED=true || true
 
-    # Try Let's Encrypt first; fall back to Buypass on rate-limit errors
-    if ! _run_certbot "" "Let's Encrypt" 2>&1 | tee /tmp/certbot.log | grep -q "too many certificates"; then
-        # grep matched = rate limit hit → output already teed, fall through
-        :
-    fi
-
-    if [[ ! -f "$CERT_PATH" ]]; then
+    if [[ "$CERT_OBTAINED" == "false" ]] && grep -q "too many certificates" /tmp/certbot-le.log 2>/dev/null; then
         warn "Let's Encrypt rate limit hit — trying Buypass (free, no rate limit)..."
-        _run_certbot "https://api.buypass.com/acme/directory" "Buypass"
-        CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
-        KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+        certbot certonly --standalone --non-interactive --agree-tos \
+            --register-unsafely-without-email \
+            --server https://api.buypass.com/acme/directory \
+            -d "$DOMAIN" && CERT_OBTAINED=true || true
     fi
 
-    [[ ! -f "$CERT_PATH" ]] && error "Could not obtain SSL certificate. Check /var/log/letsencrypt/letsencrypt.log"
+    if [[ "$CERT_OBTAINED" == "false" ]]; then
+        cat /tmp/certbot-le.log >&2 2>/dev/null || true
+        error "Could not obtain SSL certificate. Check /var/log/letsencrypt/letsencrypt.log"
+    fi
 
     # Auto-renew hook: reload nginx after renewal
     cat > /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh << 'HOOKEOF'
