@@ -1,26 +1,51 @@
 {
   "log": {
-    "loglevel": "warning"
-  },
-  "routing": {
-    "rules": [
-      {
-        "ip": [
-          "geoip:private"
-        ],
-        "outboundTag": "BLOCK",
-        "type": "field"
-      }
-    ]
+    "loglevel": "info"
   },
   "inbounds": [
     {
-      "tag": "Shadowsocks TCP",
+      "tag": "VLESS-XHTTP-NOTLS",
       "listen": "0.0.0.0",
-      "port": 1080,
-      "protocol": "shadowsocks",
+      "port": 2027,
+      "protocol": "vless",
       "settings": {
         "clients": [],
+        "decryption": "none",
+        "fallbacks": []
+      },
+      "sniffing": {
+        "destOverride": [
+          "http",
+          "tls",
+          "quic",
+          "fakedns"
+        ],
+        "enabled": true
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "none",
+        "xhttpSettings": {
+          "headers": {},
+          "host": "",
+          "mode": "packet-up",
+          "noGRPCHeader": true,
+          "noSSEHeader": false,
+          "path": "/",
+          "scMaxBufferedPosts": 30,
+          "scMaxEachPostBytes": "1000000",
+          "xPaddingBytes": "100-1000"
+        }
+      }
+    },
+    {
+      "tag": "SHADOWSOCKS",
+      "listen": "0.0.0.0",
+      "port": 888,
+      "protocol": "shadowsocks",
+      "settings": {
+        "method": "aes-256-gcm",
+        "password": "testPass",
         "network": "tcp,udp"
       }
     }
@@ -34,5 +59,30 @@
       "protocol": "blackhole",
       "tag": "BLOCK"
     }
-  ]
+  ],
+  "routing": {
+    "rules": [
+      {
+        "ip": [
+          "geoip:private"
+        ],
+        "outboundTag": "BLOCK",
+        "type": "field"
+      },
+      {
+        "domain": [
+          "geosite:private"
+        ],
+        "outboundTag": "BLOCK",
+        "type": "field"
+      },
+      {
+        "protocol": [
+          "bittorrent"
+        ],
+        "outboundTag": "BLOCK",
+        "type": "field"
+      }
+    ]
+  }
 }
