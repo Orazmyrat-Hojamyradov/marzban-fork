@@ -295,22 +295,42 @@ success ".env written to $APP_DIR/.env"
 # =============================================================================
 if [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "1" ]]; then
     echo ""
-    info "━━ STEP 6: SSL certificate (Let's Encrypt) ━━"
+    info "━━ STEP 6: SSL certificate (auto) ━━"
 
     if ! command -v certbot &>/dev/null; then
         info "Installing certbot..."
         apt-get install -y -qq certbot
     fi
 
-    info "Obtaining certificate for $DOMAIN..."
-    certbot certonly --standalone \
-        --non-interactive \
-        --agree-tos \
-        --register-unsafely-without-email \
-        -d "$DOMAIN"
-
     CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
     KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+
+    _run_certbot() {
+        local server_arg="${1:-}"
+        local label="${2:-Let's Encrypt}"
+        info "Trying $label..."
+        certbot certonly --standalone \
+            --non-interactive \
+            --agree-tos \
+            --register-unsafely-without-email \
+            ${server_arg:+--server "$server_arg"} \
+            -d "$DOMAIN"
+    }
+
+    # Try Let's Encrypt first; fall back to Buypass on rate-limit errors
+    if ! _run_certbot "" "Let's Encrypt" 2>&1 | tee /tmp/certbot.log | grep -q "too many certificates"; then
+        # grep matched = rate limit hit → output already teed, fall through
+        :
+    fi
+
+    if [[ ! -f "$CERT_PATH" ]]; then
+        warn "Let's Encrypt rate limit hit — trying Buypass (free, no rate limit)..."
+        _run_certbot "https://api.buypass.com/acme/directory" "Buypass"
+        CERT_PATH="/etc/letsencrypt/live/$DOMAIN/fullchain.pem"
+        KEY_PATH="/etc/letsencrypt/live/$DOMAIN/privkey.pem"
+    fi
+
+    [[ ! -f "$CERT_PATH" ]] && error "Could not obtain SSL certificate. Check /var/log/letsencrypt/letsencrypt.log"
 
     # Auto-renew hook: reload nginx after renewal
     cat > /etc/letsencrypt/renewal-hooks/deploy/nginx-reload.sh << 'HOOKEOF'
