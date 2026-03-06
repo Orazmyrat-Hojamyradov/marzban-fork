@@ -309,10 +309,10 @@ if [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "1" ]]; then
     # Install acme.sh if missing
     if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
         info "Installing acme.sh..."
-        curl -fsSL https://get.acme.sh | sh -s -- --install-online
-        source "$HOME/.acme.sh/acme.sh.env" 2>/dev/null || true
+        curl -fsSL https://get.acme.sh | sh
     fi
     ACME="$HOME/.acme.sh/acme.sh"
+    [[ ! -f "$ACME" ]] && error "acme.sh installation failed"
 
     info "Registering ZeroSSL account (ssl@${DOMAIN})..."
     "$ACME" --register-account -m "ssl@${DOMAIN}" --server zerossl
