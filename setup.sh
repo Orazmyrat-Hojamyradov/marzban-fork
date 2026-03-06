@@ -47,14 +47,14 @@ echo ""
 
 # Panel admin credentials
 ask "Admin username for Marzban panel [admin]:"
-read -r ADMIN_USER; ADMIN_USER="${ADMIN_USER:-admin}"
+read -r ADMIN_USER </dev/tty; ADMIN_USER="${ADMIN_USER:-admin}"
 
 ask "Admin password for Marzban panel [admin]:"
-read -r ADMIN_PASS; ADMIN_PASS="${ADMIN_PASS:-admin}"
+read -r ADMIN_PASS </dev/tty; ADMIN_PASS="${ADMIN_PASS:-admin}"
 
 # CDN domain (Bunny CDN pull zone domain)
 ask "Bunny CDN pull zone domain (e.g. maestro969.b-cdn.net) — leave empty to skip:"
-read -r CDN_DOMAIN
+read -r CDN_DOMAIN </dev/tty
 
 # Subscription URL prefix
 if [[ -n "$CDN_DOMAIN" ]]; then
@@ -64,35 +64,36 @@ else
     DEFAULT_SUB_PREFIX="http://${SERVER_IP}:${PANEL_PORT}"
 fi
 ask "Subscription URL prefix [${DEFAULT_SUB_PREFIX}]:"
-read -r SUB_PREFIX; SUB_PREFIX="${SUB_PREFIX:-$DEFAULT_SUB_PREFIX}"
+read -r SUB_PREFIX </dev/tty; SUB_PREFIX="${SUB_PREFIX:-$DEFAULT_SUB_PREFIX}"
 
 # nginx port
 ask "nginx listen port — 80 (HTTP, no SSL) or 443 (HTTPS with SSL) [80]:"
-read -r NGINX_PORT; NGINX_PORT="${NGINX_PORT:-80}"
+read -r NGINX_PORT </dev/tty; NGINX_PORT="${NGINX_PORT:-80}"
 
 # SSL setup (only if port 443)
 DOMAIN=""
 CERT_PATH=""
 KEY_PATH=""
 USE_SSL=false
+SSL_CHOICE=""
 
 if [[ "$NGINX_PORT" == "443" ]]; then
     USE_SSL=true
     ask "Domain name pointing to this server (needed for SSL cert):"
-    read -r DOMAIN
+    read -r DOMAIN </dev/tty
     [[ -z "$DOMAIN" ]] && error "Domain is required for port 443 (SSL)"
 
     ask "How to get SSL certificate?
   1) Let's Encrypt via certbot (domain must point to this server)
   2) I already have a cert (provide paths)
 Choice [1]:"
-    read -r SSL_CHOICE; SSL_CHOICE="${SSL_CHOICE:-1}"
+    read -r SSL_CHOICE </dev/tty; SSL_CHOICE="${SSL_CHOICE:-1}"
 
     if [[ "$SSL_CHOICE" == "2" ]]; then
         ask "Full path to certificate file (.pem / .cer / .crt):"
-        read -r CERT_PATH
+        read -r CERT_PATH </dev/tty
         ask "Full path to private key file (.key):"
-        read -r KEY_PATH
+        read -r KEY_PATH </dev/tty
         [[ ! -f "$CERT_PATH" ]] && error "Certificate file not found: $CERT_PATH"
         [[ ! -f "$KEY_PATH"  ]] && error "Key file not found: $KEY_PATH"
     fi
@@ -100,13 +101,13 @@ fi
 
 # HWID device limiting
 ask "Enable HWID device limiting? (for Happ app) [y/N]:"
-read -r HWID_CHOICE
+read -r HWID_CHOICE </dev/tty
 HWID_ENABLED=false
 HWID_LIMIT=3
 if [[ "${HWID_CHOICE,,}" == "y" ]]; then
     HWID_ENABLED=true
     ask "Max devices per user [3]:"
-    read -r HWID_LIMIT; HWID_LIMIT="${HWID_LIMIT:-3}"
+    read -r HWID_LIMIT </dev/tty; HWID_LIMIT="${HWID_LIMIT:-3}"
 fi
 
 echo ""
@@ -123,7 +124,7 @@ echo "  Admin user         : $ADMIN_USER"
 echo "  HWID limiting      : $HWID_ENABLED ${HWID_ENABLED:+(limit: $HWID_LIMIT)}"
 echo ""
 ask "Proceed? [Y/n]:"
-read -r CONFIRM
+read -r CONFIRM </dev/tty
 [[ "${CONFIRM,,}" == "n" ]] && echo "Aborted." && exit 0
 
 # =============================================================================
