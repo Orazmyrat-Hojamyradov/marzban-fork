@@ -317,15 +317,24 @@ if [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "1" ]]; then
     "$ACME" --register-account -m "ssl@${DOMAIN}" --server zerossl
 
     info "Issuing certificate for $DOMAIN via ZeroSSL..."
-    "$ACME" --issue --standalone -d "$DOMAIN" --server zerossl
+    if "$ACME" --issue --standalone -d "$DOMAIN" --server zerossl; then
+        info "New certificate issued"
+    elif "$ACME" --issue --standalone -d "$DOMAIN" --server zerossl --force; then
+        info "Certificate renewed (forced)"
+    else
+        warn "acme.sh --issue returned error — checking if cert already exists..."
+    fi
 
     info "Installing certificate to $CERT_PATH..."
-    "$ACME" --install-cert -d "$DOMAIN" \
+    if "$ACME" --install-cert -d "$DOMAIN" \
         --fullchain-file "$CERT_PATH" \
         --key-file "$KEY_PATH" \
-        --reloadcmd "systemctl reload nginx 2>/dev/null || true"
-
-    success "Certificate obtained: $CERT_PATH"
+        --reloadcmd "systemctl reload nginx 2>/dev/null || true"; then
+        success "Certificate installed: $CERT_PATH"
+    else
+        [[ -f "$CERT_PATH" ]] && success "Certificate already at $CERT_PATH" \
+            || error "Failed to obtain or install SSL certificate for $DOMAIN"
+    fi
 elif [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "2" ]]; then
     echo ""
     info "━━ STEP 6: SSL certificate (provided) ━━"
