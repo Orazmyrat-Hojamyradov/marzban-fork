@@ -305,6 +305,12 @@ if [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "1" ]]; then
     CERT_PATH="/etc/ssl/marzban/fullchain.pem"
     KEY_PATH="/etc/ssl/marzban/privkey.pem"
 
+    # acme.sh --standalone needs port 80 free — stop nginx if running
+    if systemctl is-active nginx &>/dev/null; then
+        info "Stopping nginx temporarily (acme.sh needs port 80)..."
+        systemctl stop nginx
+    fi
+
     # Install acme.sh if missing
     if [[ ! -f "$HOME/.acme.sh/acme.sh" ]]; then
         info "Installing acme.sh..."
@@ -352,12 +358,43 @@ info "━━ STEP 7: Docker build and start ━━"
 
 cd "$APP_DIR"
 
-# Stop existing container if running
+# Stop existing container in this project if running
 RUNNING=$($COMPOSE ps -q 2>/dev/null || true)
 if [[ -n "$RUNNING" ]]; then
     info "Stopping existing container..."
     $COMPOSE down
 fi
+
+# Free up required ports (old installs, other containers, stale processes)
+free_port() {
+    local port=$1
+    local pids
+    pids=$(ss -tlnp "sport = :$port" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | sort -u || true)
+    if [[ -n "$pids" ]]; then
+        for pid in $pids; do
+            local pname
+            pname=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
+            info "Port $port in use by $pname (PID $pid) — stopping..."
+            if [[ "$pname" == "docker-proxy" ]]; then
+                # Find and stop the docker container using this port
+                local cid
+                cid=$(docker ps --format '{{.ID}} {{.Ports}}' 2>/dev/null | grep ":${port}->" | awk '{print $1}' || true)
+                if [[ -n "$cid" ]]; then
+                    info "Stopping container $cid (holds port $port)..."
+                    docker stop "$cid" 2>/dev/null || true
+                fi
+            elif [[ "$pname" == "nginx" ]]; then
+                systemctl stop nginx 2>/dev/null || true
+            else
+                kill "$pid" 2>/dev/null || true
+            fi
+        done
+        sleep 1
+    fi
+}
+
+free_port "$PANEL_PORT"
+free_port "$XHTTP_PORT"
 
 info "Building Docker image (this takes a few minutes on first run)..."
 $COMPOSE build
