@@ -23,8 +23,10 @@ ask()     { echo -e "${BOLD}$*${NC}"; }
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 REPO_URL="https://github.com/Orazmyrat-Hojamyradov/marzban-fork.git"
-APP_DIR="/home/ubuntu/marzban-fork"
-DATA_DIR="/var/lib/marzban"
+APP_NAME="marzban"
+APP_DIR="/opt/${APP_NAME}"
+DATA_DIR="/var/lib/${APP_NAME}"
+COMPOSE_FILE="${APP_DIR}/docker-compose.yml"
 NGINX_SITE="marzban-xhttp"
 XHTTP_PORT=2027
 PANEL_PORT=8000
@@ -84,7 +86,7 @@ if [[ "$NGINX_PORT" == "443" ]]; then
     [[ -z "$DOMAIN" ]] && error "Domain is required for port 443 (SSL)"
 
     ask "How to get SSL certificate?
-  1) Let's Encrypt via certbot (domain must point to this server)
+  1) ZeroSSL via acme.sh (domain must point to this server)
   2) I already have a cert (provide paths)
 Choice [1]:"
     read -r SSL_CHOICE </dev/tty; SSL_CHOICE="${SSL_CHOICE:-1}"
@@ -121,7 +123,7 @@ echo "  SSL                : $USE_SSL ${DOMAIN:+($DOMAIN)}"
 echo "  CDN domain         : ${CDN_DOMAIN:-none}"
 echo "  Sub URL prefix     : $SUB_PREFIX"
 echo "  Admin user         : $ADMIN_USER"
-echo "  HWID limiting      : $HWID_ENABLED ${HWID_ENABLED:+(limit: $HWID_LIMIT)}"
+echo "  HWID limiting      : $HWID_ENABLED (limit: $HWID_LIMIT)"
 echo ""
 ask "Proceed? [Y/n]:"
 read -r CONFIRM </dev/tty
@@ -258,7 +260,7 @@ XRAYEOF
 success "xray_config.json written to $DATA_DIR"
 
 # =============================================================================
-# STEP 5 — .env file
+# STEP 5 — .env file (no hardcoded admin — created via CLI later)
 # =============================================================================
 echo ""
 info "━━ STEP 5: Environment file ━━"
@@ -266,9 +268,6 @@ info "━━ STEP 5: Environment file ━━"
 cat > "$APP_DIR/.env" << ENVEOF
 UVICORN_HOST = "0.0.0.0"
 UVICORN_PORT = ${PANEL_PORT}
-
-SUDO_USERNAME = "${ADMIN_USER}"
-SUDO_PASSWORD = "${ADMIN_PASS}"
 
 XRAY_JSON = "${DATA_DIR}/xray_config.json"
 XRAY_EXECUTABLE_PATH = "/usr/local/bin/xray"
@@ -295,12 +294,7 @@ success ".env written to $APP_DIR/.env"
 # =============================================================================
 if [[ "$USE_SSL" == "true" && "$SSL_CHOICE" == "1" ]]; then
     echo ""
-    info "━━ STEP 6: SSL certificate (auto) ━━"
-
-    if ! command -v certbot &>/dev/null; then
-        info "Installing certbot..."
-        apt-get install -y -qq certbot
-    fi
+    info "━━ STEP 6: SSL certificate (ZeroSSL) ━━"
 
     mkdir -p /etc/ssl/marzban
     CERT_PATH="/etc/ssl/marzban/fullchain.pem"
@@ -368,17 +362,45 @@ done
 if curl -sf "http://127.0.0.1:${PANEL_PORT}/api/core" &>/dev/null; then
     success "Marzban panel is up"
 else
-    warn "Panel may still be starting — check logs: cd $APP_DIR && docker compose logs -f"
+    warn "Panel may still be starting — check logs: marzban logs"
 fi
 
 XRAY_VERSION=$($COMPOSE exec -T marzban /usr/local/bin/xray version 2>/dev/null | grep -oP 'Xray \K[\d.]+' || echo "unknown")
 success "Container running | Xray version: $XRAY_VERSION"
 
 # =============================================================================
-# STEP 8 — nginx
+# STEP 8 — Create admin via CLI (not hardcoded in .env)
 # =============================================================================
 echo ""
-info "━━ STEP 8: nginx ━━"
+info "━━ STEP 8: Create admin user ━━"
+
+info "Creating sudo admin: $ADMIN_USER"
+$COMPOSE exec -T \
+    -e MARZBAN_ADMIN_PASSWORD="$ADMIN_PASS" \
+    marzban marzban-cli admin create -u "$ADMIN_USER" --sudo \
+    && success "Admin '$ADMIN_USER' created via CLI" \
+    || warn "Admin creation failed (may already exist)"
+
+# =============================================================================
+# STEP 9 — Install systemwide 'marzban' command
+# =============================================================================
+echo ""
+info "━━ STEP 9: Install marzban command ━━"
+
+curl -sSL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh \
+    | install -m 755 /dev/stdin /usr/local/bin/marzban
+
+success "Systemwide 'marzban' command installed"
+info "  marzban up / down / restart / logs / status"
+info "  marzban cli admin list"
+info "  marzban cli admin create -u USERNAME --sudo"
+info "  marzban edit-env"
+
+# =============================================================================
+# STEP 10 — nginx
+# =============================================================================
+echo ""
+info "━━ STEP 10: nginx ━━"
 
 if ! command -v nginx &>/dev/null; then
     info "Installing nginx..."
@@ -395,14 +417,31 @@ rm -f /etc/nginx/sites-enabled/default
 NGINX_CONF="/etc/nginx/sites-available/${NGINX_SITE}"
 
 if [[ "$USE_SSL" == "true" ]]; then
+    # Port 80 MUST serve xhttp directly (Bunny CDN origin connects here)
+    # Port 443 serves xhttp over SSL (for direct connections)
     cat > "$NGINX_CONF" << NGINXEOF
-# Redirect HTTP to HTTPS
+# Port 80 — Bunny CDN origin (NO redirect — CDN connects here via HTTP)
 server {
     listen 80;
-    server_name ${DOMAIN};
-    return 301 https://\$host\$request_uri;
+    server_name _;
+
+    location / {
+        proxy_pass http://127.0.0.1:${XHTTP_PORT};
+        proxy_http_version 1.1;
+        proxy_buffering         off;
+        proxy_request_buffering off;
+        proxy_read_timeout    300s;
+        proxy_send_timeout    300s;
+        proxy_connect_timeout  10s;
+        chunked_transfer_encoding on;
+        proxy_set_header Host              \$host;
+        proxy_set_header X-Real-IP         \$remote_addr;
+        proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
 }
 
+# Port 443 — direct SSL access
 server {
     listen 443 ssl http2;
     server_name ${DOMAIN};
@@ -414,22 +453,15 @@ server {
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 10m;
 
-    # xhttp reverse proxy — buffering MUST be off for streaming to work
     location / {
         proxy_pass http://127.0.0.1:${XHTTP_PORT};
         proxy_http_version 1.1;
-
-        # Critical: without these, nginx buffers the xhttp stream and
-        # Bunny CDN times out before receiving the HTTP 200 response.
         proxy_buffering         off;
         proxy_request_buffering off;
-
         proxy_read_timeout    300s;
         proxy_send_timeout    300s;
         proxy_connect_timeout  10s;
-
         chunked_transfer_encoding on;
-
         proxy_set_header Host              \$host;
         proxy_set_header X-Real-IP         \$remote_addr;
         proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
@@ -443,22 +475,15 @@ server {
     listen ${NGINX_PORT};
     server_name _;
 
-    # xhttp reverse proxy — buffering MUST be off for streaming to work
     location / {
         proxy_pass http://127.0.0.1:${XHTTP_PORT};
         proxy_http_version 1.1;
-
-        # Critical: without these, nginx buffers the xhttp stream and
-        # Bunny CDN times out before receiving the HTTP 200 response.
         proxy_buffering         off;
         proxy_request_buffering off;
-
         proxy_read_timeout    300s;
         proxy_send_timeout    300s;
         proxy_connect_timeout  10s;
-
         chunked_transfer_encoding on;
-
         proxy_set_header Host              \$host;
         proxy_set_header X-Real-IP         \$remote_addr;
         proxy_set_header X-Forwarded-For   \$proxy_add_x_forwarded_for;
@@ -476,17 +501,17 @@ systemctl restart nginx
 success "nginx configured and running on port $NGINX_PORT"
 
 # =============================================================================
-# STEP 9 — Firewall
+# STEP 11 — Firewall
 # =============================================================================
 echo ""
-info "━━ STEP 9: Firewall ━━"
+info "━━ STEP 11: Firewall ━━"
 
 if command -v ufw &>/dev/null; then
-    ufw allow 22/tcp    comment "SSH"       2>/dev/null || true
-    ufw allow "${PANEL_PORT}/tcp" comment "Marzban panel" 2>/dev/null || true
-    ufw allow "${NGINX_PORT}/tcp" comment "nginx xhttp"   2>/dev/null || true
+    ufw allow 22/tcp   2>/dev/null || true
+    ufw allow "${PANEL_PORT}/tcp" 2>/dev/null || true
+    ufw allow "${NGINX_PORT}/tcp" 2>/dev/null || true
     if [[ "$USE_SSL" == "true" ]]; then
-        ufw allow 80/tcp comment "HTTP redirect" 2>/dev/null || true
+        ufw allow 80/tcp 2>/dev/null || true
     fi
     success "UFW rules added (SSH, panel, nginx)"
 else
@@ -494,13 +519,14 @@ else
 fi
 
 # =============================================================================
-# STEP 10 — Configure Marzban hosts (VLESS-XHTTP-NOTLS)
+# STEP 12 — Configure Marzban hosts (VLESS-XHTTP-NOTLS)
 # =============================================================================
 echo ""
-info "━━ STEP 10: Marzban host config ━━"
+info "━━ STEP 12: Marzban host config ━━"
 
 if [[ -n "$CDN_DOMAIN" ]]; then
-    # Wait for API to be ready
+    # Get API token
+    TOKEN=""
     for i in $(seq 1 15); do
         TOKEN=$(curl -sf -X POST "http://127.0.0.1:${PANEL_PORT}/api/admin/token" \
             -d "username=${ADMIN_USER}&password=${ADMIN_PASS}" 2>/dev/null | \
@@ -514,7 +540,7 @@ if [[ -n "$CDN_DOMAIN" ]]; then
             -H "Content-Type: application/json" \
             -d "{
               \"VLESS-XHTTP-NOTLS\": [{
-                \"remark\": \"🚀 Marz ({USERNAME}) [VLESS - xhttp]\",
+                \"remark\": \"Marz ({USERNAME}) [VLESS - xhttp]\",
                 \"address\": \"${CDN_DOMAIN}\",
                 \"port\": 443,
                 \"sni\": \"${CDN_DOMAIN}\",
@@ -555,26 +581,28 @@ echo -e "  ${BOLD}Username${NC}       : ${ADMIN_USER}"
 echo -e "  ${BOLD}Password${NC}       : ${ADMIN_PASS}"
 echo ""
 echo -e "  ${BOLD}xhttp inbound${NC}  : port ${XHTTP_PORT} (inside Docker)"
-echo -e "  ${BOLD}nginx proxy${NC}    : port ${NGINX_PORT} → ${XHTTP_PORT}"
+echo -e "  ${BOLD}nginx proxy${NC}    : port ${NGINX_PORT} -> ${XHTTP_PORT}"
 if [[ -n "$CDN_DOMAIN" ]]; then
 echo -e "  ${BOLD}CDN origin${NC}     : set Bunny CDN pull zone origin to http://${SERVER_IP}"
 echo -e "  ${BOLD}CDN timeout${NC}    : set Origin Response Timeout to 60s in Bunny CDN"
 fi
 echo ""
 echo -e "  ${BOLD}Useful commands:${NC}"
-echo -e "    Logs       : cd $APP_DIR && docker compose logs -f"
-echo -e "    Restart    : cd $APP_DIR && docker compose restart"
-echo -e "    CLI        : cd $APP_DIR && docker compose exec marzban marzban-cli --help"
-echo -e "    Update     : cd $APP_DIR && git pull && docker compose build && docker compose up -d"
+echo -e "    marzban logs       — view panel logs"
+echo -e "    marzban restart    — restart panel"
+echo -e "    marzban status     — check panel status"
+echo -e "    marzban cli        — run marzban CLI"
+echo -e "    marzban edit-env   — edit .env file"
+echo -e "    marzban update     — update to latest version"
 echo ""
 if [[ "$ADMIN_PASS" == "admin" ]]; then
     warn "Default password detected — change it immediately in the panel!"
 fi
 if [[ -n "$CDN_DOMAIN" ]]; then
     echo -e "  ${YELLOW}Bunny CDN checklist:${NC}"
-    echo -e "    ☐  Pull zone origin URL : http://${SERVER_IP}"
-    echo -e "    ☐  Origin Response Timeout : 60 seconds"
-    echo -e "    ☐  Disable Force HTTPS redirect (or ensure clients use h2)"
-    echo -e "    ☐  Disable TM PoP if Turkmenistan users have issues"
+    echo -e "    - Pull zone origin URL : http://${SERVER_IP}"
+    echo -e "    - Origin Response Timeout : 60 seconds"
+    echo -e "    - Disable Force HTTPS redirect (or ensure clients use h2)"
+    echo -e "    - Disable TM PoP if Turkmenistan users have issues"
 fi
 echo ""
