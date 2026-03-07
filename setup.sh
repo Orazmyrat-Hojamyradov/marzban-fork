@@ -26,7 +26,6 @@ REPO_URL="https://github.com/Orazmyrat-Hojamyradov/marzban-fork.git"
 APP_NAME="marzban"
 APP_DIR="/opt/${APP_NAME}"
 DATA_DIR="/var/lib/${APP_NAME}"
-COMPOSE_FILE="${APP_DIR}/docker-compose.yml"
 NGINX_SITE="marzban-xhttp"
 XHTTP_PORT=2027
 PANEL_PORT=8000
@@ -35,8 +34,13 @@ PANEL_PORT=8000
 [[ "$(id -u)" -ne 0 ]] && error "Run as root: sudo bash setup.sh"
 
 # ── OS check ─────────────────────────────────────────────────────────────────
-. /etc/os-release
-[[ "$ID" != "ubuntu" ]] && warn "This script is tested on Ubuntu. Proceeding anyway..."
+if [[ -f /etc/os-release ]]; then
+    . /etc/os-release
+    [[ "$ID" != "ubuntu" ]] && warn "This script is tested on Ubuntu. Proceeding anyway..."
+else
+    warn "/etc/os-release not found — proceeding anyway..."
+    ID="unknown"
+fi
 
 # =============================================================================
 # STEP 0 — Collect configuration
@@ -166,7 +170,8 @@ else
     apt-get install -y -qq docker-compose-plugin
     COMPOSE="docker compose"
 fi
-success "Docker Compose available: $($COMPOSE version --short)"
+COMPOSE_VER=$($COMPOSE version --short 2>/dev/null || $COMPOSE version 2>/dev/null || echo "unknown")
+success "Docker Compose available: $COMPOSE_VER"
 
 # =============================================================================
 # STEP 3 — Clone / update repo
@@ -339,7 +344,8 @@ info "━━ STEP 7: Docker build and start ━━"
 cd "$APP_DIR"
 
 # Stop existing container if running
-if $COMPOSE ps -q 2>/dev/null | grep -q .; then
+RUNNING=$($COMPOSE ps -q 2>/dev/null || true)
+if [[ -n "$RUNNING" ]]; then
     info "Stopping existing container..."
     $COMPOSE down
 fi
@@ -352,21 +358,23 @@ $COMPOSE up -d
 
 # Wait for Marzban to start
 info "Waiting for Marzban to start..."
+PANEL_UP=false
 for i in $(seq 1 30); do
     if curl -sf "http://127.0.0.1:${PANEL_PORT}/api/core" &>/dev/null; then
+        PANEL_UP=true
         break
     fi
     sleep 2
 done
 
-if curl -sf "http://127.0.0.1:${PANEL_PORT}/api/core" &>/dev/null; then
+if [[ "$PANEL_UP" == "true" ]]; then
     success "Marzban panel is up"
 else
     warn "Panel may still be starting — check logs: marzban logs"
 fi
 
-XRAY_VERSION=$($COMPOSE exec -T marzban /usr/local/bin/xray version 2>/dev/null | grep -oP 'Xray \K[\d.]+' || echo "unknown")
-success "Container running | Xray version: $XRAY_VERSION"
+XRAY_VERSION=$($COMPOSE exec -T marzban /usr/local/bin/xray version 2>/dev/null | grep -o 'Xray [0-9.]*' | awk '{print $2}' || echo "unknown")
+success "Container running | Xray version: ${XRAY_VERSION:-unknown}"
 
 # =============================================================================
 # STEP 8 — Create admin via CLI (not hardcoded in .env)
@@ -375,11 +383,13 @@ echo ""
 info "━━ STEP 8: Create admin user ━━"
 
 info "Creating sudo admin: $ADMIN_USER"
-$COMPOSE exec -T \
+if $COMPOSE exec -T \
     -e MARZBAN_ADMIN_PASSWORD="$ADMIN_PASS" \
-    marzban marzban-cli admin create -u "$ADMIN_USER" --sudo \
-    && success "Admin '$ADMIN_USER' created via CLI" \
-    || warn "Admin creation failed (may already exist)"
+    marzban marzban-cli admin create -u "$ADMIN_USER" --sudo 2>/dev/null; then
+    success "Admin '$ADMIN_USER' created via CLI"
+else
+    warn "Admin creation returned error (may already exist — that's OK)"
+fi
 
 # =============================================================================
 # STEP 9 — Install systemwide 'marzban' command
@@ -387,10 +397,13 @@ $COMPOSE exec -T \
 echo ""
 info "━━ STEP 9: Install marzban command ━━"
 
-curl -sSL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh \
-    | install -m 755 /dev/stdin /usr/local/bin/marzban
-
-success "Systemwide 'marzban' command installed"
+if curl -sSL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh \
+    | install -m 755 /dev/stdin /usr/local/bin/marzban; then
+    success "Systemwide 'marzban' command installed"
+else
+    warn "Failed to install marzban command — you can install it later with:"
+    warn "  curl -sSL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh | install -m 755 /dev/stdin /usr/local/bin/marzban"
+fi
 info "  marzban up / down / restart / logs / status"
 info "  marzban cli admin list"
 info "  marzban cli admin create -u USERNAME --sudo"
@@ -506,7 +519,7 @@ success "nginx configured and running on port $NGINX_PORT"
 echo ""
 info "━━ STEP 11: Firewall ━━"
 
-if command -v ufw &>/dev/null; then
+if command -v ufw &>/dev/null && ufw status &>/dev/null; then
     ufw allow 22/tcp   2>/dev/null || true
     ufw allow "${PANEL_PORT}/tcp" 2>/dev/null || true
     ufw allow "${NGINX_PORT}/tcp" 2>/dev/null || true
@@ -515,7 +528,8 @@ if command -v ufw &>/dev/null; then
     fi
     success "UFW rules added (SSH, panel, nginx)"
 else
-    warn "ufw not found — make sure ports $PANEL_PORT and $NGINX_PORT are open in your firewall"
+    info "UFW not active — skipping firewall rules"
+    info "Make sure ports 22, $PANEL_PORT, and $NGINX_PORT are open"
 fi
 
 # =============================================================================
@@ -530,7 +544,8 @@ if [[ -n "$CDN_DOMAIN" ]]; then
     for i in $(seq 1 15); do
         TOKEN=$(curl -sf -X POST "http://127.0.0.1:${PANEL_PORT}/api/admin/token" \
             -d "username=${ADMIN_USER}&password=${ADMIN_PASS}" 2>/dev/null | \
-            python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null) && break
+            python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])" 2>/dev/null) || true
+        [[ -n "$TOKEN" ]] && break
         sleep 2
     done
 
